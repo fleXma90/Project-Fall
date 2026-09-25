@@ -80,6 +80,12 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "Benommenheit: Profil A"
 
+[node name="ShotButton" type="Button" parent="Dim/Center/Panel/Margin/VBox"]
+custom_minimum_size = Vector2(340, 52)
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+text = "Funkenwerfer: Scharf"
+
 [node name="TouchTestButton" type="Button" parent="Dim/Center/Panel/Margin/VBox"]
 custom_minimum_size = Vector2(340, 52)
 layout_mode = 2

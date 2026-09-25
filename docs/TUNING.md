@@ -84,4 +84,36 @@ Werte in `resources/tuning/sparker_tuning.tres`.
 | Bolzen: Knockback | 3 m/s über 0.15 s | etwa 0.2 m, Spieler 0.15 s im Zustand HIT |
 | Abstandshaltung | 1.6 m / 1.2 | wie Scrapling, gegenseitig zwischen allen Gegnern |
 
-Ab M2: Sturzschaden und Landeschutz gemäß `FLOOR_RULES.md` neu abstimmen. VFX, Partikelmengen und Schattenqualität werden erst auf realer Smartphone-Hardware budgetiert.
+### Schussprofile des Funkenwerfers (M2C-Nachtrag nach Nutzerfeedback „zu leicht auszuweichen“)
+
+| Wert | Standard (Ressource) | Scharf (Testprofil, **aktueller Standardstart**) |
+|---|---:|---:|
+| Aufladen gesamt | 0.65 s | 0.70 s |
+| Richtungsfestlegung | 0.45 s | 0.55 s |
+| Zeit Festlegung → Schuss | 0.20 s | 0.15 s |
+| Bolzentempo | 6 m/s | 11 m/s |
+| Gemessenes Reaktionsfenster bei 5 m (spätestes seitliches Loslaufen nach der Festlegung) | 0.6 s | 0.3 s |
+
+Scharf ist eine Laufzeitkopie der Ressource (`TrainingArena.sharp_*`); alle anderen Werte (Schaden, Radius, Lebensdauer, Knockback, HP, Tempo) sind identisch. Wechsel nur mit Neustart.
+
+## Abstieg (M2D, Playtest-Startwerte)
+
+| Wert | Start | Ort |
+|---|---:|---|
+| Höhenunterschied Ebene 1 → Ebene 2 | 10 m | `LowerFloor` in `training_arena.tscn` |
+| Sturzschaden (Kante) | 12 % max HP, mind. 1 (= 12) | `TrainingArena.fall_damage_fraction` |
+| Sturzschaden (Luke) | 0 | — |
+| Landeschutz gegen Kampftreffer | 0.75 s | `TrainingArena.landing_protection` |
+| Landepunkt: Boden ringsum / Abstand zu Gegnern | 1.2 m / 3 m | `landing_edge_margin` / `landing_enemy_clearance` |
+| Ebene 1 verlassen ab | 0.6 m unter der Oberkante | `descent_leave_height` |
+| Abklingen der Horizontalen nach dem Verlassen (M2D.2) | Zeitkonstante 0.12 s (≈0.5 m Restweg beim Laufen) | `fall_settle_time` |
+| Killhöhe Gegner Ebene 1 im Abstieg | −3 m | `upper_enemy_kill_height` |
+| Killhöhe Ebene 2 | 5 m unter Ebene 2 | `lower_kill_depth` |
+| Luke | 2 × 2 m | `DescentHatch.size` |
+| Übergang (nach Fallfortschritt 0..1): Ebene 1 auflösen / Aufsteigen / Ebene 2 einblenden | 0.05–0.5 / bis 6 m / 0.35–0.8 | `upper_fade_range` / `upper_rise` / `lower_reveal_range` (nur Darstellung) |
+| Tiefenschein | Intensität 0.045, 18 m unter der Ebene; 70 Funken | `depth_glow.gdshader`, `DepthBackdrop` |
+| Ebene 2 | 17 × 14 m mit Schacht 5 × 4 m | `LowerFloor.rects` |
+
+Gegnerwerte auf Ebene 2 sind identisch mit Ebene 1 (Profil B, Schussprofil wie gewählt). Sturzschaden und Landeschutz sind Startwerte, nicht final.
+
+Ab M2: VFX-Budget weiterhin offen. VFX, Partikelmengen und Schattenqualität werden erst auf realer Smartphone-Hardware budgetiert.

@@ -2,7 +2,8 @@ class_name EncounterStats
 extends RefCounted
 ## Kurze lokale Rundenzusammenfassung einer Kampfbegegnung (kein Telemetriesystem).
 
-enum Outcome { RUNNING, VICTORY, DEFEAT, PLAYER_FALL, ABORTED }
+## CLEARED/SKIPPED nur im Abstieg (Ebene 1 geräumt bzw. per Sturz verlassen).
+enum Outcome { RUNNING, VICTORY, DEFEAT, PLAYER_FALL, ABORTED, CLEARED, SKIPPED }
 
 var scenario: String = ""
 var profile: String = ""
@@ -21,6 +22,10 @@ var enemy_attacks_interrupted: int = 0
 var shots_fired: int = 0
 var charges_interrupted: int = 0
 var projectile_hits: int = 0
+## Mit Funkenwerfer (Schussteil der Zusammenfassung).
+var has_shooter: bool = false
+## Abstieg: Sturzschaden bei der Landung auf dieser Ebene (in damage_taken enthalten).
+var fall_damage: float = 0.0
 
 
 func outcome_name() -> String:
@@ -33,6 +38,10 @@ func outcome_name() -> String:
 			return "Spielerfall"
 		Outcome.ABORTED:
 			return "Abbruch"
+		Outcome.CLEARED:
+			return "Ebene geräumt"
+		Outcome.SKIPPED:
+			return "Sturz (Ebene übersprungen)"
 	return "läuft"
 
 
@@ -40,10 +49,14 @@ func to_line() -> String:
 	return "%s · Profil %s · %s · %.1f s · Schaden %d (%d Treffer) · besiegt HP %d / Kante %d von %d · Gegnerangriffe %d, ACTIVE %d, vor ACTIVE abgebrochen %d" % [
 			scenario, profile, outcome_name(), duration, int(damage_taken), hits_taken,
 			enemies_hp_defeated, enemies_fall_defeated, enemies_total,
-			enemy_attacks_started, enemy_attacks_active, enemy_attacks_interrupted] + _shooter_part()
+			enemy_attacks_started, enemy_attacks_active, enemy_attacks_interrupted] + _shooter_part() + _fall_part()
 
 
 func _shooter_part() -> String:
-	if scenario != "Gemischt":
+	if not has_shooter and scenario != "Gemischt":
 		return ""
 	return " · Schüsse %d (Aufladung abgebrochen %d), Projektiltreffer %d" % [shots_fired, charges_interrupted, projectile_hits]
+
+
+func _fall_part() -> String:
+	return " · Sturzschaden %d" % int(fall_damage) if fall_damage > 0.0 else ""

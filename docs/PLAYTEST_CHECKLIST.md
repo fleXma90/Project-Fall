@@ -46,8 +46,19 @@ Kernfragen: Entsteht durch drei Bedrohungen ein dynamischer Kampf? Lohnt sich Be
 3. Den Funkenwerfer zuerst ausschalten (Distanz überwinden, Hammer).
 4. Dabei Kanten und sichere Ausweichrichtungen beachten.
 5. Pause → Szenario Gruppe: mit der Drei-Scrapling-Gruppe vergleichen.
+6. Pause → Funkenwerfer „Standard“ ↔ „Scharf“ vergleichen (Standardstart ist Scharf).
 
 Kernfragen: Erzeugt der Schütze Positionierungsentscheidungen? Ist ein Schuss rechtzeitig lesbar, auch neben zwei Nahkämpfern? Fühlen sich gemischte Treffer (Hieb + Bolzen) fair an?
+
+## M2D-Abstieg (Controller-Spieltest, Standardstart)
+
+1. Ebene 1 räumen, zur leuchtenden Luke laufen und hineinfallen (kein Knopf): Landung ohne Schaden unter der Luke?
+2. Neustart; auf Ebene 1 absichtlich über die Kante laufen oder dodgen: Fall sichtbar, Landung sicher, 12 Sturzschaden, übrige Gegner bleiben zurück?
+3. Auf Ebene 2 kämpfen: Kommen die Scraplings um den Schacht herum, schießt der Funkenwerfer über den Schacht? Ist der Landeschutz spürbar/fair?
+4. Gegner in den Schacht oder über die Kante schlagen.
+5. Selbst in den Schacht laufen: Niederlage, Neustart wieder auf Ebene 1.
+
+Kernfragen: Lohnt sich das Räumen gegenüber dem Sprung (12 HP)? Ist die Luke klar erkennbar? Landet ein Kantensturz so sauber wie die Luke (senkrecht, kein schräger Zug)? M2D.1: Konkurriert die Tiefe unter der Ebene mit dem Kampf? Wirkt der Übergang (alte Ebene zieht weg → Tiefe → neue Ebene taucht auf) fließend, ohne Schnitt?
 
 ## Automatisierbare M1-Regeln
 

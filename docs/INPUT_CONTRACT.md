@@ -14,6 +14,7 @@ Dieser Vertrag definiert Verhalten, nicht eine konkrete Klasse.
 | Reset | Pausenmenü; R optional Debug | Pausenmenü | Pausenmenü |
 | Szenario Gemischt/Gruppe/Duell/Training (M2C) | Pausenmenü (zyklisch) | Pausenmenü | Pausenmenü |
 | Benommenheitsprofil A/B (M2B) | Pausenmenü | Pausenmenü | Pausenmenü |
+| Funkenwerfer-Schussprofil Standard/Scharf (M2C) | Pausenmenü | Pausenmenü | Pausenmenü |
 | Neustart nach Sieg/Niederlage (M2A) | Button, Enter oder R | A auf fokussiertem Button | Button |
 
 ## Camera-relative Bewegung

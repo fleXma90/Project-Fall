@@ -32,6 +32,9 @@ var hit_radius: float = 0.4
 var hit_stun: float = 0.2
 var is_defeated: bool = false
 var defeat_count: int = 0
+## Lokaler Umweg an Lücken (nur Ebene 2 des Abstiegs); sonst stoppt fehlender Boden die Laufabsicht.
+var gap_detour: bool = false
+var _detour_side: Array[float] = [1.0]
 var last_defeat_reason: DefeatReason = DefeatReason.HP
 var neighbors: Array[Node3D] = []
 var shots_fired: int = 0
@@ -161,7 +164,9 @@ func _approach(delta: float) -> Vector3:
 		return Vector3.ZERO
 	direction = direction.normalized()
 	if not has_ground_ahead(direction):
-		return Vector3.ZERO  # Nur die eigene Laufentscheidung; kein Klemmen der Position.
+		if not gap_detour:
+			return Vector3.ZERO  # Nur die eigene Laufentscheidung; kein Klemmen der Position.
+		direction = GapDetour.steer(direction, _detour_side, has_ground_ahead)
 	return direction * tuning.move_speed
 
 

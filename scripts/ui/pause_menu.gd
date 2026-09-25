@@ -5,6 +5,7 @@ extends CanvasLayer
 signal reset_requested
 signal mode_toggle_requested
 signal profile_toggle_requested
+signal shot_toggle_requested
 
 ## Solange ein anderes modales Overlay (Ergebnisanzeige) offen ist, öffnet die Pause nicht.
 var blocked: bool = false
@@ -13,6 +14,7 @@ var blocked: bool = false
 @onready var _reset_button: Button = $Dim/Center/Panel/Margin/VBox/ResetButton
 @onready var _mode_button: Button = $Dim/Center/Panel/Margin/VBox/ModeButton
 @onready var _profile_button: Button = $Dim/Center/Panel/Margin/VBox/ProfileButton
+@onready var _shot_button: Button = $Dim/Center/Panel/Margin/VBox/ShotButton
 @onready var _touch_button: Button = $Dim/Center/Panel/Margin/VBox/TouchTestButton
 
 
@@ -23,6 +25,7 @@ func _ready() -> void:
 	_reset_button.pressed.connect(reset_requested.emit)
 	_mode_button.pressed.connect(mode_toggle_requested.emit)
 	_profile_button.pressed.connect(profile_toggle_requested.emit)
+	_shot_button.pressed.connect(shot_toggle_requested.emit)
 	_touch_button.pressed.connect(_toggle_touch_test)
 
 
@@ -32,9 +35,10 @@ func is_open() -> bool:
 
 ## Beschriftungen: Szenario-Button wechselt zyklisch ins nächste Szenario, Profil-Button zwischen A/B.
 ## Beide Wechsel starten die Begegnung vollständig neu.
-func set_labels(scenario: String, next_scenario: String, profile: String, in_combat: bool) -> void:
+func set_labels(scenario: String, next_scenario: String, profile: String, in_combat: bool, shot_profile: String = "") -> void:
 	_mode_button.text = "Szenario: %s  ›  %s" % [scenario, next_scenario]
 	_profile_button.text = "Benommenheit: Profil %s  ›  wechseln" % profile
+	_shot_button.text = "Funkenwerfer: %s  ›  wechseln" % shot_profile
 	_reset_button.text = "Kampf neu starten" if in_combat else "Training zurücksetzen"
 
 

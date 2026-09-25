@@ -91,6 +91,19 @@ func _ready() -> void:
 		"test_x10_mixed_hit_chain_documented",
 		"test_d8_diag_mixed_hold_forward_b",
 		"test_d9_diag_mixed_shooter_first_b",
+		"test_y1_sharp_shot_profile_values_and_cycle",
+		"test_d10_diag_mixed_hold_forward_sharp_b",
+		"test_d11_diag_mixed_dodge_reaction_window",
+		"test_z1_descent_start_layout_and_cycle",
+		"test_z2_hatch_opens_after_clear_and_walk_in_without_damage",
+		"test_z3_edge_fall_skips_floor1_with_fall_damage",
+		"test_z4_edge_fall_after_clear_still_damages",
+		"test_z5_lethal_fall_damage_is_defeat",
+		"test_z6_fall_on_floor2_is_defeat_and_restart_returns_to_floor1",
+		"test_z7_floor2_victory_once_including_shaft_fall",
+		"test_z8_lower_enemies_walk_around_shaft",
+		"test_z9_upper_enemy_fall_never_reaches_floor2",
+		"test_z10_diag_edge_fall_is_vertical",
 	]
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--only="):
@@ -106,12 +119,17 @@ func _ready() -> void:
 			mode = TrainingArena.Mode.COMBAT
 		elif test_name.begins_with("test_g") or test_name.contains("_group_"):
 			mode = TrainingArena.Mode.GROUP
-		elif test_name.begins_with("test_x") or test_name.contains("_mixed_"):
+		elif test_name.begins_with("test_x") or test_name.begins_with("test_y") or test_name.contains("_mixed_"):
 			mode = TrainingArena.Mode.MIXED
-		var profile: int = TrainingArena.StunProfile.SHORT if test_name.ends_with("_b") or test_name.begins_with("test_x") else TrainingArena.StunProfile.BASE
+		elif test_name.begins_with("test_z"):
+			mode = TrainingArena.Mode.DESCENT  # Abstieg mit dem aktuellen Standard (Profil B, Schuss scharf)
+		var profile: int = TrainingArena.StunProfile.SHORT if test_name.ends_with("_b") or test_name.begins_with("test_x") or test_name.begins_with("test_z") else TrainingArena.StunProfile.BASE
+		# Funkenwerfer-Schussprofil: bestehende Tests ausdrücklich Standard, test_y…/…_sharp… Scharf.
+		var shot: int = TrainingArena.ShotProfile.SHARP if test_name.begins_with("test_y") or test_name.begins_with("test_z") or test_name.contains("_sharp") else TrainingArena.ShotProfile.STANDARD
 		if test_name.contains("default_profile"):
 			profile = -1
-		await _setup(mode, profile)
+			shot = -1
+		await _setup(mode, profile, shot)
 		await Callable(self, test_name).call()
 		await _teardown()
 		print("%s  %s" % ["PASS" if _failures.size() == before else "FAIL", test_name])
@@ -135,8 +153,8 @@ func _ticks(count: int) -> void:
 		await get_tree().physics_frame
 
 
-## profile < 0: Profil nicht setzen (Standard der Hauptszene prüfen).
-func _setup(mode: TrainingArena.Mode, profile: int) -> void:
+## profile/shot < 0: nicht setzen (Standard der Hauptszene prüfen).
+func _setup(mode: TrainingArena.Mode, profile: int, shot: int = TrainingArena.ShotProfile.STANDARD) -> void:
 	get_tree().paused = false
 	InputRouter.set_touch_test_mode(false)
 	InputRouter._switch_source(InputRouter.Source.KEYBOARD_MOUSE)
@@ -148,6 +166,8 @@ func _setup(mode: TrainingArena.Mode, profile: int) -> void:
 	main.set("start_mode", mode)
 	if profile >= 0:
 		main.set("start_profile", profile)
+	if shot >= 0:
+		main.set("start_shot_profile", shot)
 	main.set("write_log", false)
 	# Der Testläufer läuft immer (PROCESS_MODE_ALWAYS); die Hauptszene muss wie im echten Spiel pausierbar sein.
 	main.process_mode = Node.PROCESS_MODE_PAUSABLE
@@ -708,10 +728,25 @@ func test_c4_knockback_time_based() -> void:
 func test_f1_open_edge_no_collider() -> void:
 	var space := player.get_world_3d().direct_space_state
 	var world_mask := 1
-	# Alle Kollisionsformen der Welt: genau die Plattform.
+	# Alle aktiven statischen Kollisionsformen liegen innerhalb der Plattform (Teilflächen + geschlossene Luke);
+	# die untere Ebene des Abstiegs ist in den anderen Szenarien ohne Kollision.
 	var shapes := arena.find_children("*", "CollisionShape3D", true, false).filter(
-			func(s: Node) -> bool: return s.get_parent() is StaticBody3D)
-	_check(shapes.size() == 1, "Unerwartete statische Collider: %d" % shapes.size())
+			func(s: Node) -> bool: return s.get_parent() is StaticBody3D and (s.get_parent() as StaticBody3D).collision_layer != 0)
+	_check(shapes.size() > 0, "Keine Plattform-Collider")
+	for node: CollisionShape3D in shapes:
+		var box := node.shape as BoxShape3D
+		var c := node.global_position
+		_check(box != null and absf(c.x) + box.size.x * 0.5 <= 6.501 and absf(c.z) + box.size.z * 0.5 <= 5.001
+				and c.y + box.size.y * 0.5 <= 0.001, "Collider außerhalb der Plattform: %s" % node.get_path())
+	# Die Plattform ist lückenlos begehbar (auch über der geschlossenen Luke).
+	var gaps := 0
+	for gx in range(-12, 13):
+		for gz in range(-9, 10):
+			var p := Vector3(gx * 0.5, 0, gz * 0.5)
+			var down := space.intersect_ray(PhysicsRayQueryParameters3D.create(p + Vector3.UP * 3, p + Vector3.DOWN * 3, world_mask))
+			if down.is_empty() or absf(down["position"].y) > 0.01:
+				gaps += 1
+	_check(gaps == 0, "Plattform hat %d Lücken" % gaps)
 	var edges := [Vector3(6.5, 0, 0), Vector3(-6.5, 0, 0), Vector3(0, 0, 5), Vector3(0, 0, -5)]
 	for edge: Vector3 in edges:
 		var outward := Vector3(signf(edge.x), 0, signf(edge.z))
@@ -1999,6 +2034,8 @@ func _lethal(amount: float) -> HitInfo:
 func test_x1_mixed_start_and_default_profile() -> void:
 	_check(arena.mode == TrainingArena.Mode.MIXED, "Standardszenario ist nicht Gemischt")
 	_check(arena.stun_profile == TrainingArena.StunProfile.SHORT, "Standardprofil ist nicht B")
+	_check(arena.shot_profile == TrainingArena.ShotProfile.SHARP and is_equal_approx(arena.sparker.tuning.commit_time, 0.55),
+			"Standard-Schussprofil ist nicht Scharf")
 	_check(arena.active_enemies.size() == 2 and arena.active_shooters.size() == 1 and arena.combatants().size() == 3, "Zusammensetzung falsch")
 	_check(not arena.enemies[2].visible and arena.enemies[2].state == Scrapling.State.INACTIVE, "Dritter Scrapling aktiv")
 	for d in arena.dummies:
@@ -2379,3 +2416,567 @@ func test_d8_diag_mixed_hold_forward_b() -> void:
 
 func test_d9_diag_mixed_shooter_first_b() -> void:
 	await _diag_hold_forward("Gemischt/B Schütze zuerst, kantenvorsichtig", true, 0.0, true)
+
+
+
+# --- M2C-Nachtrag: Schussprofil „Scharf“ -------------------------------------------
+
+func test_y1_sharp_shot_profile_values_and_cycle() -> void:
+	var s := arena.sparker
+	var fresh := ResourceLoader.load("res://resources/tuning/sparker_tuning.tres", "", ResourceLoader.CACHE_MODE_IGNORE) as SparkerTuning
+	_check(arena.shot_profile == TrainingArena.ShotProfile.SHARP, "Schussprofil nicht Scharf")
+	_check(is_equal_approx(s.tuning.charge_time, 0.70) and is_equal_approx(s.tuning.commit_time, 0.55)
+			and is_equal_approx(s.tuning.projectile_speed, 11.0), "Scharf-Werte falsch")
+	# Nur die drei Werte weichen ab; die geteilte Ressource bleibt gleich der Datei.
+	var shared: SparkerTuning = arena._base_sparker_tuning
+	for prop in shared.get_property_list():
+		if prop["usage"] & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			var n: String = prop["name"]
+			_check(shared.get(n) == fresh.get(n), "Geteilte Funkenwerfer-Ressource verändert: %s" % n)
+			if not n in ["charge_time", "commit_time", "projectile_speed"]:
+				_check(s.tuning.get(n) == fresh.get(n), "Scharf verändert zusätzlich %s" % n)
+	# Zyklus: Aufladen 42 Ticks, Festlegung nach 33, genau ein Bolzen mit 11 m/s.
+	_isolate_sparker()
+	_place_player(Vector3(1.0, 0, 0), Vector3.LEFT)
+	_put_sparker(Vector3(-3.0, 0, 0), Vector3.RIGHT, true)
+	var spawned: Array[SparkBolt] = []
+	arena.projectile_spawned.connect(func(bolt: SparkBolt) -> void: spawned.append(bolt))
+	var tick := [0]
+	var charge_start := -1
+	var commit_tick := -1
+	var fire_tick := -1
+	var hit_tick := [-1]
+	player.damaged.connect(func(_hit: HitInfo) -> void:
+		if hit_tick[0] < 0:
+			hit_tick[0] = tick[0])
+	var bolt_start := Vector3.ZERO
+	var bolt_speed := 0.0
+	for i in 150:
+		tick[0] = i
+		await _ticks(1)
+		if charge_start < 0 and s.state == Sparker.State.CHARGE:
+			charge_start = i
+		if commit_tick < 0 and s.is_committed():
+			commit_tick = i
+		if fire_tick < 0 and not spawned.is_empty():
+			fire_tick = i
+			bolt_start = spawned[0].global_position
+		elif fire_tick >= 0 and i == fire_tick + 1 and is_instance_valid(spawned[0]):
+			bolt_speed = spawned[0].global_position.distance_to(bolt_start) * 60.0
+		if hit_tick[0] >= 0:
+			break
+	s.stop_combat()
+	print("    Scharf: Festlegung nach %d Ticks, Schuss nach %d, Bolzen %.1f m/s, Treffer %d Ticks (%.2f s) nach der Festlegung" % [
+			commit_tick - charge_start, fire_tick - charge_start, bolt_speed, hit_tick[0] - commit_tick, (hit_tick[0] - commit_tick) / 60.0])
+	_check(absi(commit_tick - charge_start - 33) <= 1 and absi(fire_tick - charge_start - 42) <= 1, "Scharf-Timing weicht ab")
+	_check(spawned.size() == 1 and absf(bolt_speed - 11.0) < 0.3, "Scharf: Bolzen %d / %.1f m/s" % [spawned.size(), bolt_speed])
+	# Wechsel auf Standard und zurück: vollständiger Neustart, Werte korrekt.
+	var restarts := [0]
+	arena.restarted.connect(func() -> void: restarts[0] += 1)
+	main.call("set_shot_profile", TrainingArena.ShotProfile.STANDARD)
+	await _ticks(2)
+	_check(restarts[0] == 1 and s.tuning == arena._base_sparker_tuning and is_equal_approx(s.tuning.commit_time, 0.45), "Wechsel auf Standard fehlerhaft")
+	main.call("set_shot_profile", TrainingArena.ShotProfile.SHARP)
+	await _ticks(2)
+	_check(restarts[0] == 2 and is_equal_approx(s.tuning.commit_time, 0.55), "Rückwechsel auf Scharf fehlerhaft")
+
+
+func test_d10_diag_mixed_hold_forward_sharp_b() -> void:
+	await _diag_hold_forward("Gemischt/B Schuss scharf, nächster Gegner, kantenvorsichtig", true)
+
+
+## Diagnose: Wie spät darf man nach der Richtungsfestlegung seitlich loslaufen und weicht noch aus?
+## Funkenwerfer isoliert, Spieler steht 5 m entfernt und läuft nach der Verzögerung voll seitlich.
+func test_d11_diag_mixed_dodge_reaction_window() -> void:
+	var table: PackedStringArray = []
+	for profile in [TrainingArena.ShotProfile.STANDARD, TrainingArena.ShotProfile.SHARP]:
+		var row: PackedStringArray = []
+		for delay in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8]:
+			main.call("set_shot_profile", profile)
+			await _ticks(2)
+			_isolate_sparker()
+			_gamepad_mode()
+			_place_player(Vector3(2.0, 0, 0), Vector3.LEFT)
+			var s := _put_sparker(Vector3(-3.0, 0, 0), Vector3.RIGHT, true)
+			var hits := [0]
+			player.damaged.connect(func(_hit: HitInfo) -> void: hits[0] += 1)
+			var waited := 0
+			while not s.is_committed() and waited < 300:
+				waited += 1
+				await _ticks(1)
+			_check(s.is_committed(), "Diagnose: keine Richtungsfestlegung")
+			await _ticks(roundi(delay * 60.0))
+			_set_stick(_stick_for_world(Vector3.BACK))
+			for i in 90:
+				await _ticks(1)
+			_set_stick(Vector2.ZERO)
+			s.stop_combat()
+			row.append("%.1fs:%s" % [delay, "getroffen" if hits[0] > 0 else "ausgewichen"])
+			arena.restart()
+			await _ticks(2)
+		table.append("%s → %s" % ["Standard" if profile == TrainingArena.ShotProfile.STANDARD else "Scharf", " ".join(row)])
+	print("    Reaktionsfenster (Verzögerung nach Festlegung bis zum seitlichen Loslaufen, 5 m Abstand):")
+	for line in table:
+		print("      " + line)
+	_check(table.size() == 2, "Diagnose unvollständig")
+
+
+# --- Abstieg: zwei Ebenen (test_z…) ---------------------------------------------------------
+
+func _kill_upper_floor() -> void:
+	for c in arena.combatants():
+		c.call("receive_hit", _lethal(200.0))
+	await _ticks(2)
+
+
+func _await_descent(target: TrainingArena.Descent, max_ticks: int = 240) -> bool:
+	for i in max_ticks:
+		if arena.descent == target:
+			return true
+		await _ticks(1)
+	return arena.descent == target
+
+
+## Direkt über die Kante auf Ebene 2 (ohne Eingabe), wartet auf die Landung.
+func _drop_off_edge() -> void:
+	player.global_position = Vector3(7.2, 0.05, 0.0)
+	player.velocity = Vector3.ZERO
+	await _await_descent(TrainingArena.Descent.FLOOR_2)
+	await _ticks(2)
+
+
+func _drop_through_hatch() -> void:
+	await _kill_upper_floor()
+	await _ticks(2)
+	player.global_position = arena.hatch.global_position + Vector3.UP * 0.05
+	player.velocity = Vector3.ZERO
+	await _await_descent(TrainingArena.Descent.FLOOR_2)
+	await _ticks(2)
+
+
+func test_z1_descent_start_layout_and_cycle() -> void:
+	var fresh: Node = MAIN_SCENE.instantiate()
+	_check(fresh.get("start_mode") == TrainingArena.Mode.DESCENT, "Standardstart ist nicht der Abstieg")
+	fresh.free()
+	_check(arena.mode == TrainingArena.Mode.DESCENT and arena.descent == TrainingArena.Descent.FLOOR_1 and arena.floor_index() == 1,
+			"Abstieg startet nicht auf Ebene 1")
+	_check(arena.stun_profile == TrainingArena.StunProfile.SHORT and arena.shot_profile == TrainingArena.ShotProfile.SHARP,
+			"Abstieg nicht mit Profil B / Schuss scharf")
+	_check(arena.active_enemies.size() == 2 and arena.active_shooters.size() == 1, "Ebene 1 nicht 2 Scraplings + 1 Funkenwerfer")
+	_check(arena.active_enemies[0] == arena.enemies[0] and arena.active_shooters[0] == arena.sparker, "Ebene 1 nutzt nicht die Mischkampf-Gegner")
+	_check(not arena.enemies[2].visible, "Dritter Scrapling im Abstieg aktiv")
+	# M2D.1: Nur die aktuelle Ebene ist sichtbar; Ebene 2 existiert physisch, bleibt aber verborgen.
+	_check(not arena.lower_floor.visible and arena.lower_floor.collision_layer == 1, "Ebene 2 im Kampf auf Ebene 1 sichtbar oder ohne Kollision")
+	_check(arena.upper_floor.visible and is_zero_approx(arena.depth_backdrop.position.y), "Tiefendarstellung nicht unter Ebene 1")
+	_check(is_equal_approx(arena.lower_floor_height(), -10.0), "Ebene 2 nicht 10 m tiefer")
+	_check(arena.lower_enemies.size() == 2 and arena.lower_shooters.size() == 1, "Ebene 2 nicht 2 Scraplings + 1 Funkenwerfer")
+	for c in arena.lower_combatants():
+		# Bis zum Abstieg verborgen (ihre HP-Anzeigen würden sonst durch Ebene 1 scheinen), aber zurückgesetzt und wartend.
+		_check(not c.visible and c.get("target") == null and bool(c.get("gap_detour")) and not bool(c.get("is_defeated")),
+				"%s auf Ebene 2 nicht wartend" % c.name)
+		var local: Vector3 = arena.lower_floor.to_local(c.global_position)
+		_check(arena.lower_floor.is_safe_point(Vector2(local.x, local.z), 1.0), "%s steht auf Ebene 2 an einer Kante" % c.name)
+	for c in arena.combatants():
+		_check(not bool(c.get("gap_detour")), "Ebene-1-Gegner mit Lückenumweg (Verhalten weicht vom Mischkampf ab)")
+	# Neue Form: Schacht in der Mitte von Ebene 2.
+	_check(not arena.lower_floor.contains(Vector2(0, -1)) and arena.lower_floor.contains(Vector2(0, 3)) and arena.lower_floor.contains(Vector2(-6, -1)),
+			"Ebene 2 hat keinen Schacht in der Mitte")
+	# Geschlossene Luke trägt: Spieler steht darauf, fällt nicht.
+	_calm_mixed()
+	_place_player(arena.hatch.global_position, Vector3.FORWARD)
+	player.global_position.y = 0.05
+	await _ticks(30)
+	_check(not arena.hatch.is_open and player.is_on_floor() and player.global_position.y > -0.1, "Geschlossene Luke trägt nicht")
+	_check(arena.descent == TrainingArena.Descent.FLOOR_1, "Abstieg ohne Öffnung ausgelöst")
+	# Szenariozyklus: Abstieg → Gemischt → … → Training → Abstieg.
+	_check(main.call("next_mode", TrainingArena.Mode.DESCENT) == TrainingArena.Mode.MIXED
+			and main.call("next_mode", TrainingArena.Mode.TRAINING) == TrainingArena.Mode.DESCENT, "Szenariozyklus falsch")
+	# Andere Szenarien: keine zweite Ebene, keine Ebene-2-Gegner.
+	for m in [TrainingArena.Mode.MIXED, TrainingArena.Mode.GROUP, TrainingArena.Mode.COMBAT, TrainingArena.Mode.TRAINING]:
+		main.call("set_mode", m)
+		await _ticks(2)
+		_check(not arena.lower_floor.visible and arena.lower_floor.collision_layer == 0 and arena.descent == TrainingArena.Descent.NONE,
+				"Ebene 2 in %s aktiv" % TrainingArena.scenario_name(m))
+		for c in arena.lower_combatants():
+			_check(not c.visible and int(c.get("collision_layer")) == 0, "Ebene-2-Gegner in %s aktiv" % TrainingArena.scenario_name(m))
+
+
+func test_z2_hatch_opens_after_clear_and_walk_in_without_damage() -> void:
+	var summaries: Array[EncounterStats] = []
+	arena.round_summarized.connect(func(st: EncounterStats) -> void: summaries.append(st))
+	var finished: Array[bool] = []
+	arena.encounter_finished.connect(func(victory: bool) -> void: finished.append(victory))
+	var starts: Array = []
+	arena.descent_started.connect(func(regular: bool, point: Vector3) -> void: starts.append([regular, point]))
+	var landings: Array[float] = []
+	arena.floor_landed.connect(func(damage: float) -> void: landings.append(damage))
+	_calm_mixed()
+	arena.combatants()[0].call("receive_hit", _lethal(200.0))
+	arena.combatants()[1].call("receive_hit", _lethal(200.0))
+	await _ticks(2)
+	_check(not arena.hatch.is_open, "Luke vor dem Räumen offen")
+	arena.combatants()[2].call("receive_hit", _lethal(200.0))
+	await _ticks(2)
+	_check(arena.hatch.is_open and arena.descent == TrainingArena.Descent.FLOOR_1_CLEARED, "Luke öffnet nach dem Räumen nicht")
+	_check(finished.is_empty() and arena.encounter == TrainingArena.Encounter.RUNNING, "Räumen von Ebene 1 beendet die Begegnung")
+	_check(summaries.size() == 1 and summaries[0].outcome == EncounterStats.Outcome.CLEARED and summaries[0].scenario == "Abstieg · Ebene 1",
+			"Zusammenfassung Ebene 1 nicht „geräumt“")
+	# Echte Eingabe: Controller-Stick läuft von vorn in die Luke (kein Interact-Button).
+	_gamepad_mode()
+	var hatch_pos := arena.hatch.global_position
+	_place_player(hatch_pos + Vector3(0, 0, -2.0), Vector3.BACK)
+	await _ticks(10)
+	_set_stick(_stick_for_world(Vector3.BACK))
+	var ys: Array[float] = []
+	var max_step := 0.0
+	var last := player.global_position
+	var transition := _new_transition_record()
+	for i in 240:
+		await _ticks(1)
+		var step := Vector2(player.global_position.x - last.x, player.global_position.z - last.z).length()
+		max_step = maxf(max_step, step)
+		last = player.global_position
+		_record_transition(transition, i)
+		if arena.descent == TrainingArena.Descent.DROPPING:
+			ys.append(player.global_position.y)
+		if arena.descent == TrainingArena.Descent.FLOOR_2:
+			break
+	_set_stick(Vector2.ZERO)
+	_check_transition(transition, "Luke")
+	_check(starts.size() == 1 and bool(starts[0][0]), "Abstieg durch die Luke nicht als regulär erkannt")
+	_check(arena.descent == TrainingArena.Descent.FLOOR_2 and landings == [0.0], "Keine schadensfreie Landung auf Ebene 2")
+	_check(is_equal_approx(player.hp, player.tuning.max_hp), "Regulärer Abstieg verursacht Schaden (HP %.0f)" % player.hp)
+	_check(max_step < player.tuning.dodge_speed / 60.0 + 0.02, "Sprung in der Fallbewegung (%.2f m/Tick)" % max_step)
+	var monotonic := true
+	for i in range(1, ys.size()):
+		monotonic = monotonic and ys[i] <= ys[i - 1] + 0.001
+	_check(ys.size() > 20 and monotonic, "Fall nicht sichtbar/stetig (%d Ticks)" % ys.size())
+	var local := arena.lower_floor.to_local(player.global_position)
+	_check(arena.lower_floor.is_safe_point(Vector2(local.x, local.z), arena.landing_edge_margin - 0.2), "Landung nicht an sicherem Punkt")
+	_check(Vector2(player.global_position.x - hatch_pos.x, player.global_position.z - hatch_pos.z).length() < 1.5,
+			"Landung nicht unter der Luke (%s)" % player.global_position)
+	_check(finished.is_empty() and summaries.size() == 1, "Landung beendet/fasst Runde falsch zusammen")
+	for c in arena.combatants():
+		_check(c.get("target") == player and c.visible, "%s greift nach der Landung nicht an" % c.name)
+	_check(not arena.upper_floor.visible and not arena.enemies[0].visible and not arena.sparker.visible, "Ebene 1 bei der Landung nicht ausgeblendet")
+	_check(is_equal_approx(arena.depth_backdrop.position.y, arena.lower_floor_height()) or arena.depth_backdrop.position.y < -5.0,
+			"Tiefendarstellung folgt nicht nach unten")
+
+
+func test_z3_edge_fall_skips_floor1_with_fall_damage() -> void:
+	var summaries: Array[EncounterStats] = []
+	arena.round_summarized.connect(func(st: EncounterStats) -> void: summaries.append(st))
+	var finished: Array[bool] = []
+	arena.encounter_finished.connect(func(victory: bool) -> void: finished.append(victory))
+	var starts: Array = []
+	arena.descent_started.connect(func(regular: bool, point: Vector3) -> void: starts.append([regular, point]))
+	# Ebene 1 läuft: Gegner haben ein Ziel, ein Bolzen ist unterwegs.
+	arena.spawn_projectile(Vector3(-5.0, 0.85, 4.0), Vector3.RIGHT, arena.sparker.tuning, "Test")
+	_gamepad_mode()
+	_place_player(Vector3(5.2, 0, 0.5), Vector3.RIGHT)
+	await _ticks(2)
+	_set_stick(_stick_for_world(Vector3.RIGHT))
+	var fall_xz := Vector3.ZERO
+	var max_step := 0.0
+	var last := player.global_position
+	var transition := _new_transition_record()
+	for i in 300:
+		await _ticks(1)
+		max_step = maxf(max_step, Vector2(player.global_position.x - last.x, player.global_position.z - last.z).length())
+		last = player.global_position
+		_record_transition(transition, i)
+		if arena.descent == TrainingArena.Descent.DROPPING and fall_xz == Vector3.ZERO:
+			fall_xz = player.global_position
+			_set_stick(Vector2.ZERO)
+		if arena.descent == TrainingArena.Descent.FLOOR_2:
+			break
+	_set_stick(Vector2.ZERO)
+	_check_transition(transition, "Kante")
+	_check(starts.size() == 1 and not bool(starts[0][0]), "Kantensturz als regulärer Abstieg gewertet")
+	_check(summaries.size() >= 1 and summaries[0].outcome == EncounterStats.Outcome.SKIPPED, "Ebene 1 nicht als übersprungen zusammengefasst")
+	_check(arena.projectiles.get_child_count() == 0, "Projektile nach dem Verlassen von Ebene 1 nicht entfernt")
+	for c in arena.upper_combatants():
+		_check(c.get("target") == null, "%s verfolgt nach dem Sturz weiter" % c.name)
+	_check(arena.descent == TrainingArena.Descent.FLOOR_2 and player.state != PlayerController.State.OUT, "Nicht auf Ebene 2 gelandet")
+	var expected := maxf(ceilf(player.tuning.max_hp * 0.12), 1.0)
+	_check(is_equal_approx(player.hp, player.tuning.max_hp - expected), "Sturzschaden nicht 12 %% (HP %.0f)" % player.hp)
+	_check(arena.stats != null and is_equal_approx(arena.stats.fall_damage, expected) and is_equal_approx(arena.stats.damage_taken, expected)
+			and arena.stats.hits_taken == 0 and arena.stats.scenario == "Abstieg · Ebene 2", "Ebene-2-Auswertung ohne Sturzschaden")
+	_check(max_step < player.tuning.dodge_speed / 60.0 + 0.02, "Sprung in der Fallbewegung (%.2f m/Tick)" % max_step)
+	var local := arena.lower_floor.to_local(player.global_position)
+	_check(arena.lower_floor.is_safe_point(Vector2(local.x, local.z), arena.landing_edge_margin - 0.2), "Landung nicht an sicherem Punkt")
+	# Senkrechter Fall wie durch die Luke: nur der kurz abklingende Schwung, kein seitliches Lenken.
+	_check(Vector2(player.global_position.x - fall_xz.x, player.global_position.z - fall_xz.z).length() < 1.0,
+			"Landepunkt nicht nahe der Sturzstelle (%s → %s)" % [fall_xz, player.global_position])
+	for c in arena.lower_combatants():
+		var d: Vector3 = c.global_position - player.global_position
+		_check(Vector2(d.x, d.z).length() >= arena.landing_enemy_clearance - 0.3, "Landung zu nah an %s" % c.name)
+	_check(finished.is_empty(), "Sturz beendet die Begegnung")
+	# Landeschutz nur gegen Kampftreffer, dann wieder verwundbar.
+	_check(not player.receive_hit(_lethal(5.0)), "Kein Landeschutz direkt nach der Landung")
+	await _ticks(roundi(arena.landing_protection * 60.0) + 2)
+	_check(player.receive_hit(_lethal(5.0)), "Landeschutz endet nicht")
+
+
+func test_z4_edge_fall_after_clear_still_damages() -> void:
+	await _kill_upper_floor()
+	_check(arena.hatch.is_open, "Luke nicht offen")
+	var landings: Array[float] = []
+	arena.floor_landed.connect(func(damage: float) -> void: landings.append(damage))
+	player.global_position = Vector3(-7.2, 0.05, -1.0)
+	player.velocity = Vector3.ZERO
+	await _await_descent(TrainingArena.Descent.FLOOR_2)
+	_check(landings == [12.0] and is_equal_approx(player.hp, 88.0), "Kantensturz nach dem Räumen ohne Sturzschaden (%s)" % [landings])
+	_check(not arena.descent_regular, "Kantensturz als regulär gewertet")
+
+
+func test_z5_lethal_fall_damage_is_defeat() -> void:
+	var finished: Array[bool] = []
+	arena.encounter_finished.connect(func(victory: bool) -> void: finished.append(victory))
+	var summaries: Array[EncounterStats] = []
+	arena.round_summarized.connect(func(st: EncounterStats) -> void: summaries.append(st))
+	_calm_mixed()
+	player.receive_hit(_lethal(92.0))
+	await _ticks(30)
+	_check(is_equal_approx(player.hp, 8.0), "Vorbereitung: HP nicht 8")
+	await _drop_off_edge()
+	_check(player.state == PlayerController.State.DEAD and is_equal_approx(player.hp, 0.0), "Tödlicher Sturzschaden tötet nicht")
+	_check(finished == [false] and arena.encounter == TrainingArena.Encounter.DEFEAT, "Tödlicher Sturz keine Niederlage")
+	_check(summaries.size() == 2 and summaries[1].outcome == EncounterStats.Outcome.DEFEAT and is_equal_approx(summaries[1].fall_damage, 12.0),
+			"Zusammenfassung des tödlichen Sturzes falsch")
+	for c in arena.combatants():
+		_check(c.get("target") == null, "%s greift den besiegten Spieler an" % c.name)
+
+
+func test_z6_fall_on_floor2_is_defeat_and_restart_returns_to_floor1() -> void:
+	await _drop_through_hatch()
+	_check(arena.descent == TrainingArena.Descent.FLOOR_2, "Vorbereitung: nicht auf Ebene 2")
+	var finished: Array[bool] = []
+	arena.encounter_finished.connect(func(victory: bool) -> void: finished.append(victory))
+	var summaries: Array[EncounterStats] = []
+	arena.round_summarized.connect(func(st: EncounterStats) -> void: summaries.append(st))
+	for c in arena.combatants():
+		c.call("stop_combat")
+	# In den Schacht laufen (echter fehlender Boden, keine Barriere).
+	_gamepad_mode()
+	_place_player(arena.lower_floor.to_global(Vector3(0.0, 0, 2.2)), Vector3.FORWARD)
+	player.global_position.y = arena.lower_floor_height() + 0.05
+	await _ticks(10)
+	_set_stick(_stick_for_world(Vector3.FORWARD))
+	for i in 240:
+		await _ticks(1)
+		if not finished.is_empty():
+			break
+	_set_stick(Vector2.ZERO)
+	_check(finished == [false] and arena.encounter == TrainingArena.Encounter.DEFEAT and player.state == PlayerController.State.OUT,
+			"Sturz von Ebene 2 ist keine Niederlage")
+	_check(summaries.size() == 1 and summaries[0].outcome == EncounterStats.Outcome.PLAYER_FALL, "Zusammenfassung Ebene 2 nicht „Spielerfall“")
+	await _ticks(90)  # Ergebnisanzeige erscheint und pausiert
+	_check(get_tree().paused and (main.get("result_overlay") as EncounterOverlay).is_open(), "Keine Ergebnisanzeige nach dem Sturz")
+	main.call("restart")
+	await _ticks(3)
+	_check(not get_tree().paused and arena.descent == TrainingArena.Descent.FLOOR_1 and arena.floor_index() == 1, "Neustart nicht auf Ebene 1")
+	_check(player.global_position.distance_to(arena.mixed_player_spawn.global_position) < 0.2 and is_equal_approx(player.hp, 100.0),
+			"Spieler nicht am Start von Ebene 1")
+	_check(arena.upper_floor.visible and not arena.hatch.is_open and arena.enemies[0].visible and arena.sparker.visible, "Ebene 1 nicht wiederhergestellt")
+	var opaque := true
+	for node in arena.upper_floor.find_children("*", "GeometryInstance3D", true, false):
+		opaque = opaque and is_zero_approx((node as GeometryInstance3D).transparency)
+	_check(opaque, "Ebene 1 bleibt transparent")
+	_check(arena.active_enemies[0] == arena.enemies[0] and arena.active_shooters[0] == arena.sparker, "Aktive Gegner nicht Ebene 1")
+	for c in arena.lower_combatants():
+		_check(not c.visible and c.get("target") == null and not bool(c.get("is_defeated")), "%s auf Ebene 2 nicht zurückgesetzt" % c.name)
+	var rig := main.get("camera_rig") as CameraRig
+	_check(is_equal_approx(rig.min_follow_height, -1.5), "Kamera-Folgegrenze nicht zurückgesetzt")
+	_check(not arena.lower_floor.visible and arena.lower_floor.collision_layer == 1 and is_zero_approx(arena.depth_backdrop.position.y),
+			"Ebene 2 nach dem Neustart sichtbar / Tiefe nicht zurückgesetzt")
+	_check(is_equal_approx(arena.environment.fog_height, -2.0), "Nebelhöhe nicht zurückgesetzt")
+	# Die Luke trägt nach dem Neustart wieder.
+	_calm_mixed()
+	_place_player(arena.hatch.global_position, Vector3.FORWARD)
+	player.global_position.y = 0.05
+	await _ticks(30)
+	_check(player.is_on_floor() and player.global_position.y > -0.1, "Luke nach dem Neustart nicht geschlossen")
+
+
+func test_z7_floor2_victory_once_including_shaft_fall() -> void:
+	await _drop_off_edge()
+	_check(arena.descent == TrainingArena.Descent.FLOOR_2, "Vorbereitung: nicht auf Ebene 2")
+	var finished: Array[bool] = []
+	arena.encounter_finished.connect(func(victory: bool) -> void: finished.append(victory))
+	var summaries: Array[EncounterStats] = []
+	arena.round_summarized.connect(func(st: EncounterStats) -> void: summaries.append(st))
+	for c in arena.combatants():
+		c.call("stop_combat")
+	var a := arena.lower_enemies[0]
+	# In den Schacht gestoßen: Kantensieg auf Ebene 2.
+	a.global_position = arena.lower_floor.to_global(Vector3(0.0, 0.05, -1.0))
+	await _ticks(120)
+	_check(a.is_defeated and a.last_defeat_reason == Scrapling.DefeatReason.FALL and a.defeat_count == 1, "Schachtsturz nicht als Kantensieg")
+	_check(finished.is_empty(), "Sieg vor allen Gegnern der Ebene 2")
+	arena.lower_enemies[1].receive_hit(_lethal(200.0))
+	await _ticks(2)
+	_check(finished.is_empty(), "Sieg nach 2/3")
+	arena.lower_shooters[0].receive_hit(_lethal(200.0))
+	await _ticks(2)
+	_check(finished == [true] and arena.encounter == TrainingArena.Encounter.VICTORY, "Kein Sieg nach Ebene 2")
+	_check(summaries.size() == 1 and summaries[0].outcome == EncounterStats.Outcome.VICTORY and summaries[0].enemies_fall_defeated == 1
+			and summaries[0].enemies_hp_defeated == 2 and summaries[0].to_line().contains("Sturzschaden 12"), "Siegeszusammenfassung Ebene 2 falsch")
+	await _ticks(90)
+	var overlay := main.get("result_overlay") as EncounterOverlay
+	_check(overlay.is_open() and (overlay.get_node("Dim/Center/Panel/Margin/VBox/Title") as Label).text.begins_with("Abstieg geschafft"),
+			"Siegesanzeige des Abstiegs fehlt")
+
+
+func test_z8_lower_enemies_walk_around_shaft() -> void:
+	await _drop_through_hatch()
+	for c in arena.combatants():
+		c.call("stop_combat")
+	var y := arena.lower_floor_height()
+	_place_player(arena.lower_floor.to_global(Vector3(0.0, 0, 3.0)), Vector3.FORWARD)
+	player.global_position.y = y + 0.05
+	arena.lower_shooters[0].set_active(false)  # nur Laufwege prüfen
+	var a := arena.lower_enemies[0]
+	var b := arena.lower_enemies[1]
+	b.set_active(false)
+	# Direkter Weg führt durch den Schacht (Norden → Süden).
+	a.global_position = arena.lower_floor.to_global(Vector3(-1.0, 0.02, -5.0))
+	a.velocity = Vector3.ZERO
+	a.target = player
+	a.state = Scrapling.State.IDLE
+	var reached := false
+	for i in 600:
+		await _ticks(1)
+		player.velocity = Vector3.ZERO
+		if a.is_defeated:
+			break
+		if a.state == Scrapling.State.ATTACK:
+			reached = true
+			break
+	_check(not a.is_defeated, "Scrapling fällt in den Schacht")
+	_check(reached, "Scrapling findet nicht um den Schacht herum (Position %s)" % a.global_position)
+	# Ohne Umweg (Ebene-1-Verhalten) bleibt er an der Lücke stehen statt hineinzulaufen.
+	main.call("restart")
+	await _ticks(2)
+	await _drop_through_hatch()
+	for c in arena.combatants():
+		c.call("stop_combat")
+	a = arena.lower_enemies[0]
+	a.gap_detour = false
+	_place_player(arena.lower_floor.to_global(Vector3(0.0, 0, 3.0)), Vector3.FORWARD)
+	player.global_position.y = y + 0.05
+	a.global_position = arena.lower_floor.to_global(Vector3(0.0, 0.02, -5.0))
+	a.target = player
+	a.state = Scrapling.State.IDLE
+	await _ticks(300)
+	_check(not a.is_defeated and arena.lower_floor.to_local(a.global_position).z < -2.5, "Ohne Umweg läuft der Scrapling in den Schacht")
+	a.gap_detour = true
+
+
+func test_z9_upper_enemy_fall_never_reaches_floor2() -> void:
+	_calm_mixed()
+	var e := arena.active_enemies[0]
+	e.global_position = Vector3(7.5, 0.02, 0.0)
+	var landed := false
+	for i in 120:
+		await _ticks(1)
+		if e.is_on_floor() and e.global_position.y < -5.0:
+			landed = true
+	_check(e.is_defeated and e.last_defeat_reason == Scrapling.DefeatReason.FALL and not e.visible, "Gestürzter Gegner nicht besiegt")
+	_check(not landed and e.global_position.y > arena.lower_floor_height() + 1.0, "Gegner der Ebene 1 erreicht Ebene 2")
+	_check(arena.descent == TrainingArena.Descent.FLOOR_1 and arena.enemies_remaining() == 2, "Gegnersturz verändert den Abstieg")
+
+
+# --- M2D.1: eine Ebene sichtbar, Übergang im Fall ---------------------------------------------
+
+func _new_transition_record() -> Dictionary:
+	return {"leave": -1, "reveal": -1, "upper_gone": -1, "lower_full": -1, "land": -1, "fade_at_reveal": -1.0,
+			"max_jump": 0.0, "last_upper": 0.0, "last_lower": 0.0, "enemies_early": 0}
+
+
+## Pro Tick: Blenden der beiden Ebenen (Übergang an die Fallhöhe gekoppelt, stetige Überblendung).
+func _record_transition(r: Dictionary, tick: int) -> void:
+	var dropping := arena.descent == TrainingArena.Descent.DROPPING
+	if r["leave"] < 0 and dropping:
+		r["leave"] = tick
+	if r["leave"] >= 0 and r["land"] < 0:
+		r["max_jump"] = maxf(r["max_jump"], maxf(absf(arena.upper_fade - r["last_upper"]), absf(arena.lower_reveal - r["last_lower"])))
+	r["last_upper"] = arena.upper_fade
+	r["last_lower"] = arena.lower_reveal
+	if r["reveal"] < 0 and arena.lower_floor.visible:
+		r["reveal"] = tick
+		r["fade_at_reveal"] = arena.upper_fade
+	if r["upper_gone"] < 0 and r["leave"] >= 0 and not arena.upper_floor.visible:
+		r["upper_gone"] = tick
+	if r["lower_full"] < 0 and arena.lower_reveal >= 1.0:
+		r["lower_full"] = tick
+	if r["land"] < 0 and arena.descent == TrainingArena.Descent.FLOOR_2:
+		r["land"] = tick
+	if not arena.lower_floor.visible:
+		for c in arena.lower_combatants():
+			if c.visible:
+				r["enemies_early"] += 1
+
+
+func _check_transition(r: Dictionary, label: String) -> void:
+	print("    Übergang %s: verlassen %d · Ebene 2 taucht auf %d (Ebene 1 zu %d%% aufgelöst) · Ebene 1 weg %d · Ebene 2 voll %d · Landung %d (Ticks), größter Blendsprung %.2f/Tick" % [
+			label, r["leave"], r["reveal"], roundi(r["fade_at_reveal"] * 100.0), r["upper_gone"], r["lower_full"], r["land"], r["max_jump"]])
+	_check(r["leave"] >= 0 and r["reveal"] > r["leave"] and r["upper_gone"] > r["leave"] and r["lower_full"] <= r["land"] and r["land"] > r["reveal"],
+			"%s: Ablauf verlassen → Überblendung → Landung verletzt" % label)
+	# Eine Ebene im Vordergrund: Ebene 2 taucht erst auf, wenn Ebene 1 schon überwiegend aufgelöst ist.
+	_check(r["fade_at_reveal"] >= 0.5, "%s: Ebene 2 erscheint, solange Ebene 1 noch deutlich sichtbar ist" % label)
+	# Stetig statt Schnitt: keine großen Blendsprünge pro Tick, Ebene 2 vor der Landung vollständig da.
+	_check(r["max_jump"] <= 0.2, "%s: Blendsprung %.2f pro Tick (Schnitt)" % [label, r["max_jump"]])
+	_check(r["land"] - r["lower_full"] >= 3, "%s: Ebene 2 erst bei der Landung vollständig" % label)
+	_check(r["enemies_early"] == 0, "%s: Gegner der Ebene 2 vor ihrer Ebene sichtbar" % label)
+	var total := float(r["land"] - r["leave"]) / 60.0
+	_check(total > 0.6 and total < 1.4, "%s: Übergang dauert %.2f s" % [label, total])
+
+
+## Diagnose: Nach Lauf bzw. weitem Dodge über die Kante fällt der Spieler senkrecht (nur abklingender Schwung);
+## der sichere Landepunkt entsteht durch Versetzen der noch verborgenen Ebene 2, nicht durch Lenken.
+func test_z10_diag_edge_fall_is_vertical() -> void:
+	var rows: PackedStringArray = []
+	for variant in ["Laufen", "Dodge"]:
+		arena.restart()
+		await _ticks(2)
+		_calm_mixed()
+		_gamepad_mode()
+		_place_player(Vector3(5.0, 0, 0.5), Vector3.RIGHT)
+		await _ticks(5)
+		var leave_xz: Array[Vector3] = []
+		var on_start := func(_regular: bool, _point: Vector3) -> void:
+			leave_xz.append(player.global_position)
+		arena.descent_started.connect(on_start)
+		_set_stick(_stick_for_world(Vector3.RIGHT))
+		var dodged := false
+		var late_speed := 0.0
+		for i in 300:
+			await _ticks(1)
+			if variant == "Dodge" and not dodged and player.global_position.x > 5.8:
+				_joy_axis(JOY_AXIS_TRIGGER_LEFT, 1.0)
+				dodged = true
+			elif dodged:
+				_joy_axis(JOY_AXIS_TRIGGER_LEFT, 0.0)
+			if arena.descent == TrainingArena.Descent.DROPPING:
+				_set_stick(Vector2.ZERO)
+				if arena.transition_progress > 0.3:
+					late_speed = maxf(late_speed, Vector2(player.velocity.x, player.velocity.z).length())
+			if arena.descent == TrainingArena.Descent.FLOOR_2:
+				break
+		_set_stick(Vector2.ZERO)
+		arena.descent_started.disconnect(on_start)
+		_check(arena.descent == TrainingArena.Descent.FLOOR_2 and leave_xz.size() == 1, "%s: keine Landung auf Ebene 2" % variant)
+		if leave_xz.is_empty():
+			continue
+		var drift := Vector2(player.global_position.x - leave_xz[0].x, player.global_position.z - leave_xz[0].z).length()
+		var shift := arena.lower_floor.global_position - Vector3(0, arena.lower_floor_height(), 0)
+		var local := arena.lower_floor.to_local(player.global_position)
+		_check(arena.lower_floor.is_safe_point(Vector2(local.x, local.z), arena.landing_edge_margin - 0.2), "%s: Landung nicht sicher" % variant)
+		_check(drift < 1.5 and late_speed < 0.3, "%s: Fall nicht senkrecht (Drift %.2f m, später %.2f m/s)" % [variant, drift, late_speed])
+		_check(player.global_position.distance_to(arena.landing_point) < 0.3, "%s: Landung weicht vom Landepunkt ab" % variant)
+		rows.append("%s: verlassen bei (%.1f, %.1f) → gelandet (%.1f, %.1f), Drift %.2f m, Horizontaltempo ab 30 %% Fall ≤ %.2f m/s, Ebene 2 versetzt um (%.1f, %.1f)" % [
+				variant, leave_xz[0].x, leave_xz[0].z, player.global_position.x, player.global_position.z, drift, late_speed, shift.x, shift.z])
+	print("    Kantensturz (Diagnose):")
+	for row in rows:
+		print("      " + row)

@@ -16,6 +16,8 @@ signal damaged(hit: HitInfo)
 signal hit_evaded(hit: HitInfo)
 ## HP auf 0 gefallen; genau einmal pro Leben.
 signal died
+## Sturzschaden beim Ebenenwechsel angewendet (kein HitInfo, kein Knockback).
+signal fall_damaged(amount: float)
 
 ## HIT: kurze Treffer-Reaktion für die Dauer des Knockbacks (keine Aktionen, Impuls wird nicht
 ## von der Laufgeschwindigkeit überschrieben). DEAD: besiegt, keine Eingaben mehr.
@@ -49,6 +51,10 @@ var _knockback_duration: float = 0.0
 var _knockback_left: float = 0.0
 var _visual: PlayerVisual = null
 var _visual_state := PlayerVisualState.new()
+## Abstieg (Ebenenwechsel): Schutz vor Kampfschaden bis zu diesem Zeitpunkt (_clock) und abklingender Fall.
+var _protected_until: float = -1.0
+var _fall_settle_active: bool = false
+var _fall_settle_time: float = 0.12
 
 @onready var visual_root: Node3D = $VisualRoot
 @onready var weapon: WeaponController = $WeaponController
@@ -199,11 +205,51 @@ func is_targetable() -> bool:
 	return state != State.OUT and state != State.DEAD
 
 
+## Landeschutz nach einem Ebenenwechsel: nur gegen Kampftreffer, nicht gegen fehlenden Boden.
+func protect_from_combat(duration: float) -> void:
+	_protected_until = _clock + duration
+
+
+func is_combat_protected() -> bool:
+	return _clock < _protected_until
+
+
+## Einmaliger Sturzschaden (Ebenenwechsel über die Kante). Kann tödlich sein.
+func apply_fall_damage(amount: float) -> void:
+	if not is_targetable() or amount <= 0.0:
+		return
+	hp = maxf(hp - amount, 0.0)
+	health_changed.emit(hp, tuning.max_hp)
+	if _visual != null:
+		_visual.play_hit(Vector3.ZERO)
+	fall_damaged.emit(amount)
+	if hp <= 0.0:
+		state = State.DEAD
+		weapon.cancel()
+		died.emit()
+
+
+## Abstieg: Nach dem Verlassen der Ebene klingt die horizontale Bewegung mit dieser Zeitkonstante ab
+## (kein Lenken, keine Eingabe), danach fällt der Spieler senkrecht wie durch die Luke. Schwerkraft unverändert.
+func settle_fall(time_constant: float) -> void:
+	_fall_settle_active = true
+	_fall_settle_time = maxf(time_constant, 0.001)
+
+
+func is_fall_settling() -> bool:
+	return _fall_settle_active
+
+
+## Horizontaler Restweg bis zum Stillstand beim Abklingen (für die Landepunktbestimmung).
+func settle_drift() -> Vector3:
+	return Vector3(velocity.x, 0.0, velocity.z) * _fall_settle_time
+
+
 ## Explizite Trefferschnittstelle (gleiche Signatur wie Dummy/Gegner). true = Treffer angewendet.
 ## Während der Dodge-iFrames: weder Schaden noch Knockback. Ein laufender eigener Angriff wird
 ## abgebrochen; der Angriffstakt bleibt ab dessen Start bestehen (kein früherer Folgeangriff).
 func receive_hit(hit: HitInfo) -> bool:
-	if not is_targetable():
+	if not is_targetable() or is_combat_protected():
 		return false
 	if is_invulnerable():
 		hit_evaded.emit(hit)
@@ -232,6 +278,12 @@ func receive_hit(hit: HitInfo) -> bool:
 # --- Bewegung ----------------------------------------------------------------
 
 func _apply_horizontal_velocity(delta: float) -> void:
+	if _fall_settle_active and not is_on_floor():
+		var keep := exp(-delta / _fall_settle_time)
+		_knockback_left = 0.0
+		velocity.x *= keep
+		velocity.z *= keep
+		return
 	var horizontal := Vector2(velocity.x, velocity.z)
 	if _knockback_left > 0.0:
 		# Zeitbasierter Trefferimpuls, linear abklingend; nicht von der Laufgeschwindigkeit überschrieben.
@@ -261,6 +313,11 @@ func _apply_horizontal_velocity(delta: float) -> void:
 func _update_airborne(delta: float) -> void:
 	if is_on_floor():
 		_airborne_time = 0.0
+		if _fall_settle_active:
+			# Landung nach dem Ebenenwechsel ohne Rutschen (sicherer Punkt bleibt sicher).
+			_fall_settle_active = false
+			velocity.x = 0.0
+			velocity.z = 0.0
 		if state == State.FALLING:
 			state = State.MOVE
 		return
@@ -351,6 +408,8 @@ func respawn_at(spawn: Transform3D) -> void:
 	_knockback_left = 0.0
 	_attack_ready_time = _clock
 	_dodge_ready_time = _clock
+	_protected_until = -1.0
+	_fall_settle_active = false
 	visual_root.visible = true
 	weapon.visible = true
 	if _visual != null:

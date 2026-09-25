@@ -69,9 +69,24 @@ Abnahme:
 
 **Nicht enthalten (bleibt gesperrt):** weitere Gegnertypen oder höhere Gegnerzahl, Bodenfallen, zweite Ebene, Sturzschaden, Abstieg, XP/Loot/Upgrades, neue Waffen/Fähigkeiten, finale Assets, Kameraumbau, Android-SDK.
 
+## M2D — Zweite Ebene: Luke und Sturz (begrenzter Teilmeilenstein)
+
+**Ausdrücklich freigegeben am 25.09.2026** („wenn alle Gegner besiegt, öffnet sich ein Loch am Boden … wenn man runterfällt, kommt auch Ebene 2, aber mit Fallschaden“). Nutzerentscheidungen: Ebene 2 mit neuer Form und erneut Mischkampf; Sturz von Ebene 2 = Niederlage; Commit erst später gemeinsam. Umsetzung: `docs/reports/M2D_REPORT.md`.
+
+- Szenario DESCENT „Abstieg“ (neuer Standardstart, Profil B, Schuss scharf): Ebene 1 = Mischkampf auf der bisherigen Plattform,
+- nach dem Räumen öffnet sich eine markierte Luke im Boden (echtes Loch, kein Interact-Button); Abstieg dadurch ohne Schaden,
+- Sturz über die Kante von Ebene 1 führt jederzeit auf Ebene 2 mit 12 % max HP Sturzschaden; verbliebene Gegner der Ebene 1 werden übersprungen,
+- sichtbarer, stetiger Fall zu einem validierten sicheren Landepunkt nahe der Sturzstelle, kurzer Landeschutz nur gegen Kampftreffer,
+- Ebene 2 10 m tiefer: Ring um einen Schacht, zwei Scraplings + ein Funkenwerfer, lokaler Umweg an der Lücke,
+- Sturz von Ebene 2 = Niederlage (Ergebnisanzeige, Neustart ab Ebene 1); Sieg nach dem Räumen von Ebene 2.
+- **M2D.2 (Nutzerkorrektur, 25.09.2026):** Kantensturz fällt senkrecht und landet sauber wie der Lukenabstieg (verborgene Ebene 2 wird versetzt statt Spieler gelenkt); Übergang als an die Fallhöhe gekoppelte Überblendung statt zeitlicher Blenden.
+- **M2D.1 (Präsentationskorrektur, 25.09.2026):** nur die aktuelle Ebene sichtbar, darunter neutrale Tiefe; Übergang im Fall (alte Ebene weg, kurz Tiefe, neue Ebene erscheint). Mechanik eingefroren. Nächster vorgesehener Schritt danach: M3 (XP, Floor-Belohnung, Run-Build-Entscheidungen), noch nicht freigegeben.
+
+**Nicht enthalten (bleibt gesperrt):** dritte Ebene, Run-Struktur, Generatoren, neue Gegnertypen, Bodenfallen, XP/Loot/Upgrades, neue Waffen/Fähigkeiten, finale Assets, Kameraumbau.
+
 ## M2 — zwei Ebenen + echte Gegner + echter Fall
 
-**Restumfang nicht freigegeben** (M2A, M2B und M2C ausgenommen).
+**Restumfang nicht freigegeben** (M2A, M2B, M2C und M2D ausgenommen; die Kernpunkte zweier Ebenen, Sturzschaden, sichere Landung und regulärer Clear-Abstieg sind mit M2D als Prototyp umgesetzt).
 
 Nach ausdrücklicher Freigabe:
 

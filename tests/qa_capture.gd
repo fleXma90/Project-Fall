@@ -14,6 +14,9 @@ var _out_dir: String = "res://qa/output/default"
 var _group_movie_only: bool = false
 ## Nur ein skriptgesteuerter Mischkampf (für die Videoaufnahme mit --write-movie).
 var _mixed_movie_only: bool = false
+## Nur die Abstiegssequenz (--qa-descent) bzw. ein skriptgesteuerter Abstieg für die Videoaufnahme.
+var _descent_only: bool = false
+var _descent_movie_only: bool = false
 
 
 func _ready() -> void:
@@ -25,6 +28,10 @@ func _ready() -> void:
 			_group_movie_only = true
 		elif arg == "--qa-mixed-movie":
 			_mixed_movie_only = true
+		elif arg == "--qa-descent":
+			_descent_only = true
+		elif arg == "--qa-descent-movie":
+			_descent_movie_only = true
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(_out_dir))
 	main = MAIN_SCENE.instantiate()
 	# Die M1/M1.1-Sequenz läuft im Trainingsmodus, danach folgt die M2A-Kampfsequenz.
@@ -43,6 +50,11 @@ func _ready() -> void:
 		await _group_movie()
 	elif _mixed_movie_only:
 		await _mixed_movie()
+	elif _descent_movie_only:
+		await _descent_movie()
+	elif _descent_only:
+		print("QA window=%s visible_rect=%s" % [DisplayServer.window_get_size(), get_viewport().get_visible_rect().size])
+		await _descent_sequence()
 	else:
 		await _run()
 	get_tree().quit()
@@ -163,6 +175,7 @@ func _run() -> void:
 	await _combat_sequence()
 	await _group_sequence()
 	await _mixed_sequence()
+	await _descent_sequence()
 
 	# Pausemenü.
 	(main.get("pause_menu") as PauseMenu).open()
@@ -715,5 +728,160 @@ func _mixed_movie() -> void:
 	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
 	_set_stick(Vector2.ZERO)
 	await _seconds(1.5)
+	if arena.last_stats != null:
+		print("QA movie summary: %s" % arena.last_stats.to_line())
+
+
+# --- Abstieg: zwei Ebenen ------------------------------------------------------------
+
+func _descent_sequence() -> void:
+	main.call("set_mode", TrainingArena.Mode.DESCENT)
+	main.call("set_profile", TrainingArena.StunProfile.SHORT)
+	main.call("set_shot_profile", TrainingArena.ShotProfile.SHARP)
+	await _seconds(0.8)
+	await _shot("53_descent_floor1_start")
+	print("QA descent start floor=%d descent=%s combatants=%d lower=%d" % [arena.floor_index(),
+			TrainingArena.Descent.keys()[arena.descent], arena.combatants().size(), arena.lower_combatants().size()])
+	# Ebene 1 räumen → Luke öffnet sich.
+	_descent_kill_current_floor()
+	await _seconds(0.7)
+	await _shot("54_hatch_open")
+	print("QA hatch open=%s descent=%s encounter=%s" % [arena.hatch.is_open, TrainingArena.Descent.keys()[arena.descent],
+			TrainingArena.Encounter.keys()[arena.encounter]])
+	# Mit dem Stick in die offene Luke laufen: Fall als Zeitreihe.
+	player.global_position = arena.hatch.global_position + Vector3(0, 0.05, -2.2)
+	player.velocity = Vector3.ZERO
+	await _seconds(0.3)
+	var hp_before := player.hp
+	await _contact_sheet("55_hatch_descent_sheet", 2.0, 24, func(_t: float) -> void:
+		_set_stick(_stick_axes_for_world(Vector3.BACK) if arena.descent == TrainingArena.Descent.FLOOR_1_CLEARED else Vector2.ZERO))
+	_set_stick(Vector2.ZERO)
+	await _until(func() -> bool: return arena.descent == TrainingArena.Descent.FLOOR_2, 3.0)
+	await _seconds(0.1)
+	await _shot("56_floor2_landed_regular")
+	print("QA hatch landing regular=%s hp %d -> %d point=%s player=%s" % [arena.descent_regular, int(hp_before), int(player.hp),
+			arena.landing_point, player.global_position])
+	await _measure_rates(1.5)
+	await _shot("57_floor2_enemies_approach")
+	var in_view := 0
+	for c in arena.combatants():
+		if camera.is_position_in_frustum(c.global_position + Vector3.UP * 0.6):
+			in_view += 1
+	print("QA floor2 in_view=%d/%d upper_visible=%s" % [in_view, arena.combatants().size(), arena.upper_floor.visible])
+	# Kampf auf Ebene 2 (RT gehalten, nächster Gegner, Schacht-/Kantenvorsicht).
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _contact_sheet("58_floor2_fight_sheet", 5.0, 40, func(_t: float) -> void: _drive_hold_forward_descent())
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	_set_stick(Vector2.ZERO)
+	print("QA floor2 fight hp=%d remaining=%d encounter=%s" % [int(player.hp), arena.enemies_remaining(),
+			TrainingArena.Encounter.keys()[arena.encounter]])
+	# Sturz über die Kante von Ebene 1 (Gegner noch aktiv) → Ebene 2 mit Sturzschaden.
+	main.call("restart")
+	await _seconds(0.4)
+	for c in arena.combatants():
+		c.call("stop_combat")
+	player.global_position = Vector3(5.0, 0.05, 1.0)
+	player.velocity = Vector3.ZERO
+	await _seconds(0.3)
+	await _contact_sheet("59_edge_fall_sheet", 1.8, 24, func(_t: float) -> void:
+		_set_stick(_stick_axes_for_world(Vector3.RIGHT) if arena.descent == TrainingArena.Descent.FLOOR_1 else Vector2.ZERO))
+	_set_stick(Vector2.ZERO)
+	await _until(func() -> bool: return arena.descent == TrainingArena.Descent.FLOOR_2, 3.0)
+	await _seconds(0.1)
+	await _shot("60_edge_fall_landed_damage")
+	print("QA edge landing regular=%s hp=%d fall_damage=%d point=%s" % [arena.descent_regular, int(player.hp), int(arena.last_fall_damage),
+			arena.landing_point])
+	# Sieg auf Ebene 2.
+	for c in arena.combatants():
+		c.call("stop_combat")
+	_descent_kill_current_floor()
+	await _until(func() -> bool: return (main.get("result_overlay") as EncounterOverlay).is_open(), 3.0)
+	await _shot("61_descent_victory")
+	if arena.last_stats != null:
+		print("QA descent victory summary: %s" % arena.last_stats.to_line())
+	await _click_restart()
+	await _seconds(0.4)
+	await _shot("62_after_restart_floor1")
+	print("QA restart floor=%d hatch_open=%s upper_visible=%s hp=%d" % [arena.floor_index(), arena.hatch.is_open, arena.upper_floor.visible, int(player.hp)])
+	# Ebene 2: in den Schacht laufen → Niederlage.
+	for c in arena.combatants():
+		c.call("stop_combat")
+	player.global_position = Vector3(7.2, 0.05, 0.0)
+	player.velocity = Vector3.ZERO
+	await _until(func() -> bool: return arena.descent == TrainingArena.Descent.FLOOR_2, 3.0)
+	for c in arena.combatants():
+		c.call("stop_combat")
+	await _seconds(0.3)
+	var shaft_start := arena.lower_floor.to_global(Vector3(0.0, 0.05, 2.4))  # Ebene 2 kann versetzt sein
+	player.global_position = shaft_start
+	await _seconds(0.3)
+	_set_stick(_stick_axes_for_world(Vector3.FORWARD))
+	await _until(func() -> bool: return player.state == PlayerController.State.FALLING, 3.0)
+	await _seconds(0.25)
+	await _shot("63_floor2_shaft_fall")
+	_set_stick(Vector2.ZERO)
+	await _until(func() -> bool: return (main.get("result_overlay") as EncounterOverlay).is_open(), 4.0)
+	await _shot("64_floor2_fall_defeat")
+	if arena.last_stats != null:
+		print("QA shaft fall summary: %s" % arena.last_stats.to_line())
+	await _click_restart()
+	await _seconds(0.3)
+
+
+func _descent_kill_current_floor() -> void:
+	var lethal := HitInfo.new()
+	lethal.damage = 200.0
+	for c in arena.combatants():
+		c.call("receive_hit", lethal)
+
+
+## Wie _drive_hold_forward, aber mit Kanten-/Schachtprüfung der aktuellen Ebene.
+func _drive_hold_forward_descent() -> void:
+	var best: Node3D = null
+	for e in arena.combatants():
+		if not bool(e.get("is_defeated")) and e.visible and (best == null or e.global_position.distance_to(player.global_position) < best.global_position.distance_to(player.global_position)):
+			best = e
+	if best == null:
+		_set_stick(Vector2.ZERO)
+		return
+	var to := best.global_position - player.global_position
+	to.y = 0
+	var step := player.global_position + to.normalized() * 1.2
+	var floor_node: FloorGeometry = arena.lower_floor if arena.floor_index() == 2 else arena.upper_floor
+	var local := floor_node.to_local(step)
+	var near_edge := not floor_node.is_safe_point(Vector2(local.x, local.z), 0.5)
+	_set_stick(_stick_axes_for_world(to.normalized()) if to.length() > 1.3 and not near_edge else Vector2.ZERO)
+
+
+func _descent_movie() -> void:
+	main.call("set_mode", TrainingArena.Mode.DESCENT)
+	main.call("set_profile", TrainingArena.StunProfile.SHORT)
+	main.call("set_shot_profile", TrainingArena.ShotProfile.SHARP)
+	await _seconds(0.8)
+	# Mit --qa-skip: sofort über die rechte Kante (Sturzschaden) und auf Ebene 2 kämpfen.
+	# Sonst Ebene 1 kämpfen (RT gehalten); nach dem Räumen in die Luke, danach Ebene 2.
+	var skip := OS.get_cmdline_user_args().has("--qa-skip")
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	var start := Time.get_ticks_msec()
+	while (Time.get_ticks_msec() - start) < 45000 and arena.encounter == TrainingArena.Encounter.RUNNING:
+		if skip and arena.descent == TrainingArena.Descent.FLOOR_1:
+			_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+			_set_stick(_stick_axes_for_world(Vector3.RIGHT))
+		elif arena.descent == TrainingArena.Descent.FLOOR_1_CLEARED:
+			_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+			var to := arena.hatch.global_position - player.global_position
+			to.y = 0
+			_set_stick(_stick_axes_for_world(to.normalized()))
+		elif arena.descent == TrainingArena.Descent.DROPPING:
+			_set_stick(Vector2.ZERO)
+		else:
+			_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+			_drive_hold_forward_descent()
+		await get_tree().physics_frame
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	_set_stick(Vector2.ZERO)
+	await _seconds(1.5)
+	print("QA descent movie floor=%d descent=%s encounter=%s hp=%d" % [arena.floor_index(), TrainingArena.Descent.keys()[arena.descent],
+			TrainingArena.Encounter.keys()[arena.encounter], int(player.hp)])
 	if arena.last_stats != null:
 		print("QA movie summary: %s" % arena.last_stats.to_line())

@@ -29,6 +29,9 @@ var hit_stun: float = 0.4
 var neighbors: Array[Node3D] = []
 var is_defeated: bool = false
 var defeat_count: int = 0
+## Lokaler Umweg an Lücken (nur Ebene 2 des Abstiegs); sonst stoppt fehlender Boden die Laufabsicht.
+var gap_detour: bool = false
+var _detour_side: Array[float] = [1.0]
 var last_defeat_reason: DefeatReason = DefeatReason.HP
 var spawn_transform: Transform3D
 
@@ -134,7 +137,9 @@ func _chase(delta: float) -> Vector3:
 		direction = (direction + separation).normalized()
 	# Bodenprüfung auf die tatsächlich verwendete Laufrichtung (nach Abstandshaltung).
 	if not has_ground_ahead(direction):
-		return Vector3.ZERO  # Nur die eigene Laufentscheidung; kein Klemmen der Position.
+		if not gap_detour:
+			return Vector3.ZERO  # Nur die eigene Laufentscheidung; kein Klemmen der Position.
+		direction = GapDetour.steer(direction, _detour_side, has_ground_ahead)
 	return direction * speed
 
 

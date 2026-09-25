@@ -34,6 +34,8 @@ func show_result(victory: bool, scenario: String, summary: String) -> void:
 		victory_title = "Alle Scraplings besiegt!"
 	elif scenario == "Gemischt":
 		victory_title = "Alle Gegner besiegt!"
+	elif scenario == "Abstieg":
+		victory_title = "Abstieg geschafft – Ebene 2 geräumt!"
 	_title.text = victory_title if victory else "Niederlage"
 	_subtitle.text = summary
 	_title.modulate = Color(1.0, 0.8, 0.35) if victory else Color(1.0, 0.4, 0.3)

@@ -129,3 +129,25 @@ Wie in M2B reagiert das Ergebnis stark auf kleine Timingunterschiede. Die Skript
 ## Stopp
 
 Keine weiteren Gegnertypen oder höhere Gegnerzahl, keine Bodenfallen, keine zweite Ebene, kein Sturzschaden oder Abstieg, keine XP/Loot/Upgrades, keine neuen Waffen/Fähigkeiten, keine finalen Assets, kein Kameraumbau, kein Android-Setup. Keine Installationen, kein Commit/Push.
+
+## Nachtrag: Schussprofil „Scharf“ (nach Nutzerfeedback)
+
+**Feedback:** Der Funkenwerfer ist verständlich, aber sehr leicht auszuweichen. Nach der Festlegung genügen 1–2 Schritte.
+
+**Befund:** Ab der Festlegung blieben ≈0.8–1.1 s bis zum Einschlag (0.20 s Rest-Aufladen + 6 m/s Flug); ein seitlicher Schritt von ≈0.5 m dauert ≈0.1 s. Gemessen (`test_d11`, 5 m Abstand): Seitliches Loslaufen bis zu 0.6 s nach der Festlegung reichte noch.
+
+**Umsetzung (Option A):** Umschaltbares Schussprofil wie die Benommenheitsprofile.
+
+| | Standard | Scharf |
+|---|---|---|
+| Aufladen / Festlegung | 0.65 / 0.45 s | 0.70 / 0.55 s |
+| Bolzentempo | 6 m/s | 11 m/s |
+| Treffer nach der Festlegung (stehender Spieler, 5 m) | ≈0.85 s | 0.42 s |
+| Spätestes Ausweichen nach der Festlegung (5 m) | 0.6 s | 0.3 s |
+
+- „Scharf“ ist jetzt der Standardstart. „Standard“ bleibt per Pausemenü („Funkenwerfer: … › wechseln“) oder `-- --shot=standard` wählbar, „Scharf“ per `-- --shot=sharp`. Ein Wechsel startet die Runde vollständig neu.
+- Die Werte liegen in einer Laufzeitkopie pro Funkenwerfer-Instanz. Die Datei `sparker_tuning.tres` bleibt unverändert (per Test geprüft), alle anderen Werte sind identisch.
+- Weiterhin kein Homing, keine Vorhersage; Ankündigung und Regeln unverändert. HUD zeigt „Schuss scharf/standard“, die Rundenzusammenfassung das Schussprofil.
+- Tests: alle bisherigen Mischkampf-Tests laufen ausdrücklich mit „Standard“. Neu: `test_y1` (Werte, nur drei Abweichungen, Ressource unverändert, Timing 33/42 Ticks, Bolzen 11.0 m/s, Wechsel mit Neustart), `test_d10` (Skript RT halten + nächster Gegner mit „Scharf“: Sieg, 10 Schaden – Einzellauf, keine Balance-Aussage), `test_d11` (Reaktionsfenster, Tabelle oben).
+- Offen: Ob „Scharf“ im Mischkampf mit Nahkämpfern zu viel Druck erzeugt oder genau richtig ist, zeigt nur der manuelle Spieltest.
+

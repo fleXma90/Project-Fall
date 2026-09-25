@@ -9,6 +9,9 @@ var _arena: TrainingArena = null
 var _physics_ticks: int = 0
 var _physics_rate: int = 0
 var _rate_timer: float = 0.0
+## Abstieg: kurzer Hinweis nach der Landung (Sturzschaden bzw. regulärer Abstieg).
+var _landing_note: String = ""
+var _landing_note_left: float = 0.0
 
 @onready var _safe_root: Control = $SafeRoot
 @onready var _hp_bar: ProgressBar = $SafeRoot/HpPanel/Margin/VBox/HpBar
@@ -29,6 +32,13 @@ func bind(player: PlayerController, arena: TrainingArena) -> void:
 	_arena = arena
 	player.health_changed.connect(_on_health_changed)
 	_on_health_changed(player.hp, player.tuning.max_hp)
+	arena.floor_landed.connect(_on_floor_landed)
+	arena.restarted.connect(func() -> void: _landing_note_left = 0.0)
+
+
+func _on_floor_landed(fall_damage: float) -> void:
+	_landing_note = "Sturzschaden %d" % int(fall_damage) if fall_damage > 0.0 else "Abstieg durch die Luke"
+	_landing_note_left = 2.5
 
 
 func toggle_debug() -> void:
@@ -53,6 +63,7 @@ func _physics_process(_delta: float) -> void:
 
 func _process(delta: float) -> void:
 	_rate_timer += delta
+	_landing_note_left = maxf(_landing_note_left - delta, 0.0)
 	if _rate_timer >= 1.0:
 		_physics_rate = roundi(_physics_ticks / _rate_timer)
 		_physics_ticks = 0
@@ -103,8 +114,20 @@ func _update_encounter_label() -> void:
 	var enemies_text := "Gegner %d/%d" % [_arena.enemies_remaining(), _arena.combatants().size()]
 	if _arena.mode == TrainingArena.Mode.COMBAT:
 		enemies_text = "Scrapling HP %d/%d" % [int(ceil(_arena.enemy.hp)), int(_arena.enemy.tuning.max_hp)]
-	_encounter_label.text = "%s  ·  %s  ·  Profil %s%s" % [TrainingArena.scenario_name(_arena.mode).to_upper(),
-			enemies_text, _arena.profile_name().substr(0, 1), status]
+	var shot := ""
+	if not _arena.active_shooters.is_empty():
+		shot = "  ·  Schuss %s" % ("scharf" if _arena.shot_profile == TrainingArena.ShotProfile.SHARP else "standard")
+	var scenario := TrainingArena.scenario_name(_arena.mode).to_upper()
+	if _arena.mode == TrainingArena.Mode.DESCENT:
+		scenario += "  ·  Ebene %d" % _arena.floor_index()
+		match _arena.descent:
+			TrainingArena.Descent.FLOOR_1_CLEARED:
+				enemies_text = "geräumt – Luke offen"
+			TrainingArena.Descent.DROPPING:
+				enemies_text = "Sturz …"
+		if _landing_note_left > 0.0:
+			status += "  ·  " + _landing_note
+	_encounter_label.text = "%s  ·  %s  ·  Profil %s%s%s" % [scenario, enemies_text, _arena.profile_name().substr(0, 1), shot, status]
 
 
 func _screen_angle(direction: Vector3) -> String:

@@ -104,8 +104,22 @@ M2A ist ein begrenzter Teilmeilenstein: genau ein aktiver Nahkampfgegner (Scrapl
 - Kontakt mit dem Spieler: über `receive_hit`, höchstens ein Treffer, danach verbraucht. Während Dodge-iFrames: kein Schaden, kein Knockback, Bolzen trotzdem verbraucht (nur dieser Projektiltyp).
 - Echte 3D-Höhe: Ein Spieler weit unter der Plattform wird nicht wegen gleicher XZ-Position getroffen.
 - Bereinigung: Projektile werden bei Sieg, Niederlage, Spielerfall, Neustart, Szenario- und Profilwechsel entfernt; Pause hält sie samt Lebensdauer an, ohne sie zu löschen.
+- Schussprofile: „Standard“ (Festlegung 0.45 s, Bolzen 6 m/s) und „Scharf“ (Festlegung 0.55 s von 0.70 s, Bolzen 11 m/s; aktueller Standardstart). Ankündigung, Regeln und Ausweichbarkeit bleiben gleich, nur das Reaktionsfenster ist kürzer. Kein Homing, keine Vorhersage.
 - Mehrquellen-Treffer (Nahkampf + Bolzen) bleiben nach den bestehenden Regeln erlaubt: Jeder gültige Treffer wendet Schaden und Knockback an, der letzte Knockback überschreibt den vorherigen. Offener Fairnessbefund, siehe `M2C_REPORT.md`.
+
+## Zwei Ebenen und Abstieg — M2D (umgesetzt)
+
+- Szenario DESCENT (Standardstart): Ebene 1 ist der unveränderte Mischkampf (dieselben Instanzen, Werte und Regeln).
+- **Regulärer Abstieg:** Sind alle Gegner der Ebene 1 besiegt, öffnet sich die Luke (2 × 2 m, leuchtender Rahmen, Klappen schwingen nach unten). Wer hineinläuft, fällt durch das echte Loch; kein Knopf, kein unsichtbarer Trigger. Kein Sturzschaden. Die Begegnung läuft weiter (keine Ergebnisanzeige nach Ebene 1).
+- **Sturz über die Kante:** jederzeit möglich, auch nach dem Räumen. Einmaliger Sturzschaden 12 % max HP (mindestens 1, derzeit 12) bei der Landung; kann tödlich sein. Noch lebende Gegner der Ebene 1 hören auf zu kämpfen und bleiben zurück (übersprungen), fliegende Bolzen werden entfernt.
+- **Fall und Landung (M2D.2):** Unter 0.6 m unter der Oberkante gilt Ebene 1 als verlassen. Danach klingt die horizontale Bewegung mit 0.12 s Zeitkonstante ab (≈0.5 m Restweg beim Laufen), keine Eingabe, kein Lenken: Der Spieler fällt senkrecht, bei Kante und Luke gleich. Landestelle = Position beim Verlassen + Restweg. Die noch verborgene Ebene 2 wird samt wartenden Gegnern so versetzt, dass dort ein geprüfter sicherer Punkt liegt (mindestens 1.2 m Boden ringsum, 3 m Abstand zu Gegnern). Bei der Luke ist in der Regel kein Versatz nötig. Landung ohne Rutschen, kein Teleport des Spielers.
+- **Landeschutz:** 0.75 s nach der Landung (und während des Falls) wirken keine Kampftreffer; Bolzen werden dabei wie bei Dodge-iFrames verbraucht. Kein Schutz vor fehlendem Boden.
+- **Ebene 2:** Ring um einen 5 × 4 m Schacht; zwei Scraplings (Flanken) + ein Funkenwerfer (gegenüber). Sie warten verborgen und ohne Ziel, erscheinen beim Abstieg und greifen ab der Landung an. An Lücken weichen sie lokal aus (Drehung 45°/90°/135°, bevorzugte Seite bleibt), statt stehenzubleiben; Knockback in den Schacht bleibt ein Kantensieg.
+- **Niederlage/Sieg:** Sturz von Ebene 2 (Kante oder Schacht) = Niederlage mit Ergebnisanzeige; Neustart beginnt wieder auf Ebene 1 mit vollen HP. Sieg erst nach allen Gegnern der Ebene 2.
+- Gegner der Ebene 1, die über die Kante fallen, gelten 3 m unter der Oberkante als besiegt und erreichen Ebene 2 nie.
+- **Darstellung (M2D.1/M2D.2):** Nur die aktuelle Ebene ist sichtbar; darunter neutrale Tiefe (Dunkelheit, Glutnester, Funken). Der Übergang ist an die Fallhöhe gekoppelt (nicht an Zeit): Ebene 1 samt zurückgelassenen Gegnern steigt bis 6 m nach oben weg und löst sich auf; Ebene 2 taucht überlappend auf, sobald Ebene 1 zu ≈80 % aufgelöst ist, und ist vor der Landung vollständig da. Nebel und Tiefe wandern stetig mit. Übergang ≈ 0.8 s, Kamera folgt.
+- **Prototyp-Regeln (nicht final):** Ebene-2-Sturz = Niederlage nur mangels Ebene 3; 12 Sturzschaden ist Testwert; 0.75 s Landeschutz später durch sichere Aktivierung ersetzen.
 
 ## Nicht im Umfang
 
-Weitere Gegnertypen, Sturzschaden, zweite Ebene, Charge/Sprung/Projektil, Combo-/Heavy-/Ausdauersysteme.
+Weitere Gegnertypen, dritte Ebene, Run-Struktur, Charge/Sprung, Combo-/Heavy-/Ausdauersysteme.

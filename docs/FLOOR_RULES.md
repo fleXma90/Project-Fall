@@ -32,6 +32,10 @@ Ankunft erfolgt an einem validierten sicheren Punkt; nicht dieselbe XZ-Koordinat
 
 Nach Clear wird ein markierter sicherer Abstieg aktiv. Kein Interact-Button nötig: Zone kurz halten/betreten. Regulärer Abstieg verursacht keinen Sturzschaden.
 
+### Umsetzung M2D (Prototyp, 25.09.2026)
+
+Szenario „Abstieg“: Ebene 2 liegt 10 m tiefer (Ring um einen Schacht). Sturz über die Kante von Ebene 1 → Landung auf Ebene 2 mit 12 % max HP Sturzschaden; Luke nach dem Räumen → Landung ohne Schaden. Landepunkt: validiert (1.2 m Boden ringsum, 3 m Abstand zu Gegnern). Seit M2D.2 fällt der Spieler senkrecht (kurz abklingender Schwung); die noch verborgene Ebene 2 wird versetzt, nicht der Spieler gelenkt. Landeschutz 0.75 s nur gegen Kampftreffer. Sturz von Ebene 2 = Niederlage. Details: `COMBAT_SPEC.md` (M2D), `reports/M2D_REPORT.md`.
+
 ## Dodge / Tunneling
 
 Da echte 3D-Physik verwendet wird, darf ein schneller Dodge keine unrealistische Kantenbrücke erzeugen. Collider, Physiktakt und Bewegung so umsetzen, dass der Player bei fehlendem Boden zuverlässig in Falling übergeht. Kein künstlicher „Support-Sweep“, der einen großen Luftspalt als Boden behandelt.
