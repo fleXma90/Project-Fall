@@ -21,3 +21,10 @@
 | D17 | Entwurfsstandard | M2: zwei Floors, echte Gegner, echter Sturz eine Ebene tiefer |
 | D18 | **Aktualisiert 25.09.2026 (M1.1)** | Schlagrichtung folgt im Windup der Ausrichtung, fixiert erst bei ACTIVE; Recovery frei. Bewegung bei gehaltenem Angriff unverändert (Multiplikator 1.0). Hammer 0.26/0.12/0.42 s |
 | D19 | **Freigabe 25.09.2026 (M2A)** | Erste aktive Kampfbegegnung: ein Scrapling, Spielerschaden, iFrames wirksam, Sieg/Niederlage/Neustart, Kampfmodus als Standard; restlicher M2 gesperrt |
+| D20 | **Entscheidung 25.09.2026 (M2B)** | Attack-Hold bleibt eine erlaubte Eingabemethode und wird nicht künstlich bestraft |
+| D21 | **Entscheidung 25.09.2026 (M2B)** | Kein zusätzlicher Hammer-Cooldown |
+| D22 | **Entscheidung 25.09.2026 (M2B)** | Zielrichtung: bewegungsorientierter Gruppenkampf (Richtung, Positionierung, Zielwechsel, Ausweichen statt Tastenfrequenz) |
+| D23 | **Testprofil 25.09.2026 (M2B)** | Gegner-Benommenheit 0.20 s (Profil B) ist ein Testprofil, keine beschlossene Balance; Standard bleibt Profil A (0.40 s) |
+| D24 | **Nutzerentscheidung 25.09.2026 (M2C)** | Profil B (0.20 s Scrapling-Benommenheit) ist der normale Arbeitsstand, weil es sich im Gruppenkampf besser anfühlte; nicht endgültig ausbalanciert, keine vollständige Hardware-/Balanceabnahme. Profil A bleibt für alte Tests/Vergleiche |
+| D25 | **Nutzerentscheidung 25.09.2026 (M2C)** | Scraplings bleiben einfache, kontrollierbare Gegner; Schwierigkeit soll aus Gegnerrollen und Positionierung entstehen, nicht aus mehr HP/Tempo |
+| D26 | **Umsetzung 25.09.2026 (M2C)** | Funkenwerfer-Bolzen: Kontakt während Dodge-iFrames verbraucht den Bolzen ohne Schaden/Knockback (nur dieser Projektiltyp; Nahkampfregeln unverändert) |

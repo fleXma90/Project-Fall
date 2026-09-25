@@ -72,11 +72,15 @@ func _process(delta: float) -> void:
 			_screen_angle(velocity) if velocity.length() > 0.1 else "—", velocity.length(),
 			_screen_angle(_player.facing_direction), _screen_angle(_player.body_forward()), swing])
 	lines.append("FPS %d  ·  Physik %d/s" % [Engine.get_frames_per_second(), _physics_rate])
-	if _arena != null and _arena.mode == TrainingArena.Mode.COMBAT:
-		var enemy := _arena.enemy
-		lines.append("Scrapling: %s · Waffe %s %d%% · festgelegt %s" % [Scrapling.State.keys()[enemy.state],
-				WeaponController.Phase.keys()[enemy.weapon.phase], roundi(enemy.weapon.phase_progress() * 100.0),
-				"ja" if enemy.is_committed() else "nein"])
+	if _arena != null and _arena.is_combat_mode():
+		var parts: PackedStringArray = []
+		for enemy in _arena.active_enemies:
+			var phase: String = WeaponController.Phase.keys()[enemy.weapon.phase].substr(0, 3) if enemy.weapon.is_busy() else "-"
+			parts.append("%s/%s%s" % [Scrapling.State.keys()[enemy.state].substr(0, 5), phase, "!" if enemy.is_committed() else ""])
+		for shooter in _arena.active_shooters:
+			parts.append("Funke %s%s %d%%" % [Sparker.State.keys()[shooter.state].substr(0, 5), "!" if shooter.is_committed() else "",
+					roundi(shooter.charge_progress() * 100.0)])
+		lines.append("Scraplings: %s  (! = Richtung festgelegt)" % "  ·  ".join(parts))
 	elif _arena != null:
 		lines.append("Dummies besiegt: HP %d · Kante %d  ·  Stürze: %d" % [
 				_arena.dummy_hp_defeats, _arena.dummy_fall_defeats, _arena.player_fall_count])
@@ -90,14 +94,17 @@ func _update_encounter_label() -> void:
 	if _arena.mode == TrainingArena.Mode.TRAINING:
 		_encounter_label.text = "TRAINING"
 		return
-	var enemy := _arena.enemy
 	var status := ""
 	match _arena.encounter:
 		TrainingArena.Encounter.VICTORY:
-			status = "  ·  besiegt"
+			status = "  ·  Sieg"
 		TrainingArena.Encounter.DEFEAT:
 			status = "  ·  Niederlage"
-	_encounter_label.text = "KAMPF  ·  Scrapling HP %d / %d%s" % [int(ceil(enemy.hp)), int(enemy.tuning.max_hp), status]
+	var enemies_text := "Gegner %d/%d" % [_arena.enemies_remaining(), _arena.combatants().size()]
+	if _arena.mode == TrainingArena.Mode.COMBAT:
+		enemies_text = "Scrapling HP %d/%d" % [int(ceil(_arena.enemy.hp)), int(_arena.enemy.tuning.max_hp)]
+	_encounter_label.text = "%s  ·  %s  ·  Profil %s%s" % [TrainingArena.scenario_name(_arena.mode).to_upper(),
+			enemies_text, _arena.profile_name().substr(0, 1), status]
 
 
 func _screen_angle(direction: Vector3) -> String:

@@ -149,7 +149,11 @@ Scrapling (CharacterBody3D, scrapling.gd)   # HP, KI-Zustände, Knockback, Boden
 └─ AttackTelegraph (VFX, Bodenmarkierung)
 ```
 
-Treffer laufen über `receive_hit(hit: HitInfo) -> bool` (Player, Dummy, Scrapling). Keine gemeinsame Actor-Basisklasse, kein KI-Framework; Werte in `resources/tuning/scrapling_tuning.tres` und `resources/weapons/scrapling_cleaver.tres`.
+M2B: Die Arena hat drei Szenarien (GROUP Standard, COMBAT = Duell, TRAINING) und verwaltet `enemies` (alle drei Instanzen) und `active_enemies` (Teilnehmer der Runde) explizit. Signale werden einmalig in `_ready` verbunden. Das Benommenheitsprofil wird pro Instanz gesetzt (`Scrapling.hit_stun`). `EncounterStats` (`scripts/levels/encounter_stats.gd`) fasst jede Kampfrunde zusammen, auch nach Spielerfall oder Abbruch; `Main` schreibt sie in `user://encounter_log.txt`.
+
+M2C: Szenario MIXED. Die Arena führt `active_enemies` (Scraplings) und `active_shooters` (Funkenwerfer); `combatants()` liefert beide. Beide Typen teilen nur eine kleine Duck-Typing-Schnittstelle (`defeated`, `is_defeated`, `fall_out`, `stop_combat`, `set_active`, `reset_to`, `target`, `neighbors`), ohne gemeinsame Basisklasse. Die Abstandshaltung liegt in `GroupSpacing` (`scripts/actors/group_spacing.gd`). Der Funkenwerfer (`scenes/actors/sparker.tscn`, Visual-Adapter `SparkerVisual`, Placeholder `PlaceholderSparkerVisual`, `AimIndicator`) meldet Schüsse per Signal; die Arena erzeugt `SparkBolt`-Instanzen (`scenes/combat/spark_bolt.tscn`) im Knoten `Projectiles` und entfernt sie beim Rundenende oder Neustart.
+
+Treffer laufen über `receive_hit(hit: HitInfo) -> bool` (Player, Dummy, Scrapling, Funkenwerfer); `HitInfo.source_name` hält die Quelle lesbar, auch wenn sie später entfernt wird. Keine gemeinsame Actor-Basisklasse, kein KI-Framework; Werte in `resources/tuning/scrapling_tuning.tres` und `resources/weapons/scrapling_cleaver.tres`.
 
 ## Produktionsasset-Integration später
 

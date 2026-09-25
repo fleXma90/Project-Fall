@@ -84,6 +84,28 @@ M2A ist ein begrenzter Teilmeilenstein: genau ein aktiver Nahkampfgegner (Scrapl
 
 **Bekannter Playtestbefund (M2A).** Gehaltener Angriff mit Annäherung unterbricht den Scrapling dauerhaft: Hammer-Windup 0.26 s gegen Gegner-Windup 0.55 s, dazu 0.4 s Trefferreaktion. Bewusst nicht durch Hyperarmor o. Ä. ausgeglichen; siehe `docs/reports/M2A_REPORT.md`.
 
+## Gruppenkampf — M2B (umgesetzt)
+
+- Szenario GRUPPE: drei Scraplings derselben Szene, jeder mit eigener Zustandsmaschine und eigener Waffe (eigene Trefferliste). Kein Angriffsdirektor: Gleichzeitige Angriffe sind erlaubt.
+- Abstandshaltung: In CHASE addiert jeder Gegner einen Wegdrück-Vektor zu nahen lebenden Nachbarn (Radius 1.6 m) zu seiner Laufabsicht. Innerhalb der Stopp-Distanz rückt er nur langsam seitlich ab. Die Bodenprüfung gilt für die resultierende Richtung. Keine Wirkung auf Knockback, Schwerkraft, WINDUP (nach der Festlegung), ACTIVE oder RECOVERY.
+- Hammer: ein Schlag trifft alle Gegner im Sektor, jeden höchstens einmal pro Swing.
+- Gegnertreffer: jeder Gegnerangriff höchstens ein Treffer. Treffer verschiedener Gegner sind getrennt (eigene Waffe, `HitInfo.source`), auch bei gleicher `swing_id` und im selben Physiktick. Jeder gültige Treffer wendet Schaden und Knockback an, der letzte Knockback überschreibt den vorherigen. Es gibt keine zusätzliche Unverwundbarkeit nach Treffern und keine gemeinsame Abklingzeit.
+- Sieg erst, wenn alle Gegner der Runde besiegt sind (HP oder Fall, je Gegner genau einmal); gleichzeitige Niederlagen erzeugen genau ein Ergebnis. Spielertod oder -fall beendet den Kampf aller Gegner.
+- Benommenheitsprofile A/B: siehe `TUNING.md`; Wechsel nur mit vollständigem Neustart.
+- Gehaltener Angriff bleibt erlaubt und wird nicht bestraft; kein zusätzlicher Hammer-Cooldown.
+
+## Mischkampf und Funkenwerfer — M2C (umgesetzt)
+
+- Szenario MIXED (Standard): zwei Scraplings + ein Funkenwerfer. Sieg erst, wenn alle drei besiegt sind; kein Angriffsdirektor.
+- **Funkenwerfer:** APPROACH (dreht, läuft heran, solange der Spieler weiter als 6 m entfernt ist oder er nicht im Kamerabild ist) → CHARGE (steht; dreht bis 0.45 s nur zum Spieler, danach fixe Richtung) → nach 0.65 s genau ein Schuss → RECOVER 1.0 s. Er flieht nicht. Kein Nahkampfangriff, Charge, Sprung, Fächer oder Flächenschaden. Neue Aufladungen beginnen nur im Kamerabild; begonnene enden regulär.
+- Lesbarkeit: sichtbare Rohrausrichtung, wachsende Ladungskugel, ab der Festlegung geduckte Abstützpose, zurückgezogenes Rohr und kräftigere dezente Richtungslinie am Boden (kein Flächensektor), Mündungsblitz und Rückstoß beim Schuss.
+- Hammertreffer: normaler Schaden und Knockback, 0.20 s Benommenheit; ein laufendes Aufladen wird abgebrochen, ein nicht abgefeuerter Schuss entsteht nie später. Kein Hyperarmor.
+- **Energiebolzen:** gerade, ohne Gravitation, Richtung beim Abschuss fix, kein Homing/Hitscan. Werte beim Abschuss kopiert: Er fliegt weiter, auch wenn der Schütze danach getroffen oder besiegt wird (solange die Begegnung läuft). Pro Tick Kugel-Sweep entlang des Weges plus Startüberlappung (kein Durchspringen). Er kollidiert nur mit Spieler und Weltgeometrie, nicht mit Gegnern (kein Friendly Fire), fliegt über Lücken und wird vom Hammer nicht zerstört.
+- Kontakt mit dem Spieler: über `receive_hit`, höchstens ein Treffer, danach verbraucht. Während Dodge-iFrames: kein Schaden, kein Knockback, Bolzen trotzdem verbraucht (nur dieser Projektiltyp).
+- Echte 3D-Höhe: Ein Spieler weit unter der Plattform wird nicht wegen gleicher XZ-Position getroffen.
+- Bereinigung: Projektile werden bei Sieg, Niederlage, Spielerfall, Neustart, Szenario- und Profilwechsel entfernt; Pause hält sie samt Lebensdauer an, ohne sie zu löschen.
+- Mehrquellen-Treffer (Nahkampf + Bolzen) bleiben nach den bestehenden Regeln erlaubt: Jeder gültige Treffer wendet Schaden und Knockback an, der letzte Knockback überschreibt den vorherigen. Offener Fairnessbefund, siehe `M2C_REPORT.md`.
+
 ## Nicht im Umfang
 
-Mehrere aktive Gegner, zweiter Gegnertyp, Sturzschaden, zweite Ebene, Charge/Sprung/Projektil, Combo-/Heavy-/Ausdauersysteme.
+Weitere Gegnertypen, Sturzschaden, zweite Ebene, Charge/Sprung/Projektil, Combo-/Heavy-/Ausdauersysteme.

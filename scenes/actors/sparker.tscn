@@ -1,0 +1,29 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/actors/sparker.gd" id="1_sparker"]
+[ext_resource type="Resource" path="res://resources/tuning/sparker_tuning.tres" id="2_tuning"]
+[ext_resource type="PackedScene" path="res://scenes/actors/placeholder_sparker.tscn" id="3_visual"]
+[ext_resource type="Script" path="res://scripts/vfx/aim_indicator.gd" id="4_aim"]
+
+[sub_resource type="CapsuleShape3D" id="Shape_body"]
+radius = 0.4
+height = 1.1
+
+[node name="Sparker" type="CharacterBody3D"]
+collision_layer = 4
+collision_mask = 7
+floor_max_angle = 0.349066
+script = ExtResource("1_sparker")
+tuning = ExtResource("2_tuning")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0)
+shape = SubResource("Shape_body")
+
+[node name="VisualRoot" type="Node3D" parent="."]
+
+[node name="PlaceholderSparker" parent="VisualRoot" instance=ExtResource("3_visual")]
+
+[node name="AimIndicator" type="MeshInstance3D" parent="." node_paths=PackedStringArray("sparker")]
+script = ExtResource("4_aim")
+sparker = NodePath("..")

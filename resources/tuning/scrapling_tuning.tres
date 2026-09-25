@@ -17,4 +17,6 @@ stop_distance = 1.2
 hit_stun = 0.4
 edge_probe_distance = 0.55
 hit_radius = 0.38
+separation_radius = 1.6
+separation_strength = 1.2
 ground_friction = 30.0

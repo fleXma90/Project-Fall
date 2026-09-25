@@ -7,6 +7,8 @@ extends Node3D
 ## folgt der Mount ihm rein visuell. Reichweite/Winkel kommen ausschließlich aus `data`.
 
 signal swing_started(swing_id: int, direction: Vector3)
+## Eintritt in das Trefferfenster (für Auswertung/Darstellung; keine Gameplaywirkung).
+signal active_started(swing_id: int)
 signal hit_landed(target: Node3D, point: Vector3, hit: HitInfo)
 
 enum Phase { IDLE, WINDUP, ACTIVE, RECOVERY }
@@ -84,6 +86,8 @@ func tick(delta: float) -> bool:
 		if phase == Phase.ACTIVE:
 			_query_hits()  # Aktives Fenster wird auch bei großen Ticks mindestens einmal geprüft.
 		phase = _next_phase(phase)
+		if phase == Phase.ACTIVE:
+			active_started.emit(swing_id)
 		if phase == Phase.IDLE:
 			_phase_time = 0.0
 			return true
@@ -161,6 +165,7 @@ func _make_hit(origin: Vector3, target_pos: Vector3) -> HitInfo:
 	hit.knockback_duration = data.knockback_duration
 	hit.attack_direction = direction
 	hit.source = get_parent() as Node3D
+	hit.source_name = String(hit.source.name) if hit.source != null else ""
 	return hit
 
 

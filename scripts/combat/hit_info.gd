@@ -9,3 +9,5 @@ var knockback_velocity: Vector3 = Vector3.ZERO
 var knockback_duration: float = 0.0
 var attack_direction: Vector3 = Vector3.FORWARD
 var source: Node3D = null
+## Lesbarer Quellenname (bleibt gültig, auch wenn die Quelle später entfernt wird).
+var source_name: String = ""

@@ -10,6 +10,10 @@ var player: PlayerController
 var arena: TrainingArena
 var camera: Camera3D
 var _out_dir: String = "res://qa/output/default"
+## Nur ein skriptgesteuerter Gruppenkampf (für die Videoaufnahme mit --write-movie).
+var _group_movie_only: bool = false
+## Nur ein skriptgesteuerter Mischkampf (für die Videoaufnahme mit --write-movie).
+var _mixed_movie_only: bool = false
 
 
 func _ready() -> void:
@@ -17,10 +21,17 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--qa-out="):
 			_out_dir = "res://" + arg.trim_prefix("--qa-out=")
+		elif arg == "--qa-group-movie":
+			_group_movie_only = true
+		elif arg == "--qa-mixed-movie":
+			_mixed_movie_only = true
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(_out_dir))
 	main = MAIN_SCENE.instantiate()
 	# Die M1/M1.1-Sequenz läuft im Trainingsmodus, danach folgt die M2A-Kampfsequenz.
 	main.set("start_mode", TrainingArena.Mode.TRAINING)
+	main.set("log_tag", "AUTOMATISIERT (QA-Sequenz)")
+	# Der QA-Knoten läuft immer; die Hauptszene muss wie im echten Spiel pausierbar sein.
+	main.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(main)
 	player = main.get("player")
 	arena = main.get("arena")
@@ -28,7 +39,12 @@ func _ready() -> void:
 	# Quellenwechsel protokollieren: echte Maus-/Controllerereignisse des Systems stören sonst unbemerkt.
 	InputRouter.source_changed.connect(func(_source: int) -> void:
 		print("QA source_changed -> %s at %.2fs" % [InputRouter.source_name(), Time.get_ticks_msec() / 1000.0]))
-	await _run()
+	if _group_movie_only:
+		await _group_movie()
+	elif _mixed_movie_only:
+		await _mixed_movie()
+	else:
+		await _run()
 	get_tree().quit()
 
 
@@ -145,6 +161,8 @@ func _run() -> void:
 	await _seconds(0.3)
 
 	await _combat_sequence()
+	await _group_sequence()
+	await _mixed_sequence()
 
 	# Pausemenü.
 	(main.get("pause_menu") as PauseMenu).open()
@@ -223,6 +241,8 @@ func _contact_sheet(sheet_name: String, duration: float, count: int, drive: Call
 		var focus_weapon: WeaponController = focus_node.get("weapon")
 		if focus_weapon != null and focus_weapon.is_busy():
 			phase = WeaponController.Phase.keys()[focus_weapon.phase].substr(0, 3)
+		elif focus_node is Sparker:
+			phase = Sparker.State.keys()[(focus_node as Sparker).state].substr(0, 3) + ("!" if (focus_node as Sparker).is_committed() else "")
 		phases.append("%d:%s" % [index, phase])
 		index += 1
 	var path := "%s/%s.png" % [_out_dir, sheet_name]
@@ -395,3 +415,305 @@ func _click_restart() -> void:
 		e.position = center
 		e.global_position = center
 		_push(e)
+
+
+# --- M2B-Gruppensequenz --------------------------------------------------------------
+
+func _group_sequence() -> void:
+	main.call("set_mode", TrainingArena.Mode.GROUP)
+	await _seconds(0.4)
+	await _shot("29_group_start")
+	print("QA group start remaining=%d profile=%s" % [arena.enemies_remaining(), arena.profile_name()])
+	await _measure_rates(2.0)
+	# Skriptkampf: RT gehalten, zum nächsten Gegner laufen (mit Kantenvorsicht) – als Zeitreihe.
+	main.call("restart")
+	await _seconds(0.3)
+	player.hp = 1000.0
+	var multi_windup_shot := [false]
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _contact_sheet("30_group_fight_sheet", 4.0, 40, func(_t: float) -> void:
+		_drive_hold_forward()
+		if not multi_windup_shot[0] and _enemies_in_windup() >= 2:
+			multi_windup_shot[0] = true
+			print("QA multiple windups visible"))
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	_set_stick(Vector2.ZERO)
+	# Gleichzeitige Ankündigungen: Spieler steht, alle drei holen gleichzeitig aus.
+	main.call("restart")
+	await _seconds(0.3)
+	_arrange_three_around_player(1.3)
+	await _until(func() -> bool: return _enemies_committed() >= 3)
+	await _seconds(0.1)
+	await _shot("31_group_three_telegraphs")
+	await _until(func() -> bool: return arena.enemy.weapon.phase == WeaponController.Phase.ACTIVE)
+	await _seconds(0.03)
+	await _shot("32_group_three_hits")
+	print("QA group simultaneous player_hp=%d" % int(player.hp))
+	# Profilwechsel per Klick im Pausemenü.
+	var pause := main.get("pause_menu") as PauseMenu
+	pause.open()
+	await _seconds(0.3)
+	await _click_button(pause.get_node("Dim/Center/Panel/Margin/VBox/ProfileButton"))
+	await _seconds(0.3)
+	pause.open()
+	await _seconds(0.3)
+	await _shot("33_pause_group_profile_b")
+	print("QA profile after click=%s paused=%s" % [arena.profile_name(), get_tree().paused])
+	pause.close()
+	await _seconds(0.3)
+	await _shot("34_group_profile_b_hud")
+	# Sieg: zwei Gegner per HP, der dritte per Kante.
+	for e in arena.active_enemies:
+		e.stop_combat()
+	var lethal := HitInfo.new()
+	lethal.damage = 80.0
+	arena.active_enemies[0].receive_hit(lethal)
+	arena.active_enemies[1].receive_hit(lethal)
+	var last: Scrapling = arena.active_enemies[2]
+	last.global_position = Vector3(5.9, 0, 0)
+	player.global_position = Vector3(4.6, 0, 0)
+	player.facing_direction = Vector3.RIGHT
+	await _seconds(0.4)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _seconds(0.1)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	await _until(func() -> bool: return (main.get("result_overlay") as EncounterOverlay).is_open(), 4.0)
+	await _shot("35_group_victory")
+	await _click_restart()
+	await _seconds(0.3)
+	# Niederlage in der Gruppe.
+	player.hp = 20.0
+	await _until(func() -> bool: return (main.get("result_overlay") as EncounterOverlay).is_open(), 8.0)
+	await _shot("36_group_defeat")
+	await _click_restart()
+	await _seconds(0.3)
+	# Spielerfall in der Gruppe → Reset.
+	player.global_position = Vector3(5.8, 0, 3.0)
+	_set_stick(_stick_axes_for_world(Vector3.RIGHT))
+	await _until(func() -> bool: return player.state == PlayerController.State.FALLING)
+	await _seconds(0.15)
+	await _shot("37_group_player_fall")
+	_set_stick(Vector2.ZERO)
+	await _until(func() -> bool: return player.state == PlayerController.State.MOVE and player.global_position.y > -0.5)
+	await _seconds(0.3)
+	await _shot("38_group_after_fall_reset")
+	if arena.last_stats != null:
+		print("QA last summary: %s" % arena.last_stats.to_line())
+
+
+func _group_movie() -> void:
+	main.call("set_mode", TrainingArena.Mode.GROUP)
+	await _seconds(0.8)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	var start := Time.get_ticks_msec()
+	while (Time.get_ticks_msec() - start) < 14000 and arena.encounter == TrainingArena.Encounter.RUNNING:
+		_drive_hold_forward()
+		await get_tree().physics_frame
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	_set_stick(Vector2.ZERO)
+	await _seconds(1.5)
+	if arena.last_stats != null:
+		print("QA movie summary: %s" % arena.last_stats.to_line())
+
+
+## Skript: zum nächsten lebenden Gegner laufen, nicht in Kantennähe (1,2 m Sicherheitsabstand).
+func _drive_hold_forward() -> void:
+	var best: Node3D = null
+	for e in arena.combatants():
+		if not bool(e.get("is_defeated")) and e.visible and (best == null or e.global_position.distance_to(player.global_position) < best.global_position.distance_to(player.global_position)):
+			best = e
+	if best == null:
+		_set_stick(Vector2.ZERO)
+		return
+	var to := best.global_position - player.global_position
+	to.y = 0
+	var step := player.global_position + to.normalized() * 1.2
+	var near_edge := absf(step.x) > 5.9 or absf(step.z) > 4.4
+	_set_stick(_stick_axes_for_world(to.normalized()) if to.length() > 1.3 and not near_edge else Vector2.ZERO)
+
+
+func _enemies_in_windup() -> int:
+	var count := 0
+	for e in arena.active_enemies:
+		if e.weapon.phase == WeaponController.Phase.WINDUP:
+			count += 1
+	return count
+
+
+func _enemies_committed() -> int:
+	var count := 0
+	for e in arena.active_enemies:
+		if e.is_committed():
+			count += 1
+	return count
+
+
+func _arrange_three_around_player(distance: float) -> void:
+	player.global_position = Vector3(0, 0, -0.5)
+	for i in arena.active_enemies.size():
+		var e := arena.active_enemies[i]
+		var angle := TAU * i / 3.0 + 0.4
+		var dir := Vector3(cos(angle), 0, sin(angle))
+		e.global_position = player.global_position + dir * distance
+		e.rotation.y = PlayerController.yaw_for_direction(-dir)
+		e.velocity = Vector3.ZERO
+		e.target = player
+
+
+func _click_button(button: Button) -> void:
+	var center := button.get_global_rect().get_center()
+	for pressed in [true, false]:
+		var e := InputEventMouseButton.new()
+		e.button_index = MOUSE_BUTTON_LEFT
+		e.pressed = pressed
+		e.position = center
+		e.global_position = center
+		_push(e)
+	await get_tree().process_frame
+
+
+# --- M2C-Mischkampf ----------------------------------------------------------------
+
+func _mixed_sequence() -> void:
+	main.call("set_mode", TrainingArena.Mode.MIXED)
+	main.call("set_profile", TrainingArena.StunProfile.SHORT)
+	await _seconds(0.4)
+	await _shot("39_mixed_start")
+	var in_view := 0
+	for c in arena.combatants():
+		if camera.is_position_in_frustum(c.global_position + Vector3.UP * 0.6):
+			in_view += 1
+	print("QA mixed start in_view=%d/%d profile=%s" % [in_view, arena.combatants().size(), arena.profile_name()])
+	await _measure_rates(2.0)
+	# Aufladezyklus des Funkenwerfers als Zeitreihe (Scraplings ruhen abseits).
+	main.call("restart")
+	await _seconds(0.2)
+	_mixed_isolate_sparker()
+	var s: Sparker = arena.sparker
+	await _contact_sheet("40_sparker_charge_sheet", 2.2, 32, func(_t: float) -> void: pass, s)
+	main.call("restart")
+	await _seconds(0.2)
+	_mixed_isolate_sparker()
+	await _until(func() -> bool: return s.state == Sparker.State.CHARGE and s.charge_progress() > 0.3)
+	await _shot("41_sparker_charging")
+	await _until(func() -> bool: return s.is_committed() and s.charge_progress() > 0.85)
+	await _shot("42_sparker_committed")
+	await _until(func() -> bool: return arena.projectiles.get_child_count() > 0)
+	await _seconds(0.2)
+	await _shot("43_bolt_in_flight")
+	await _seconds(0.6)
+	print("QA bolt player_hp=%d" % int(player.hp))
+	# Ausweichen per Dodge durch den Bolzen, danach Annäherung und Hammer.
+	await _until(func() -> bool: return s.is_committed(), 4.0)
+	await _until(func() -> bool: return arena.projectiles.get_child_count() > 0)
+	var bolt := arena.projectiles.get_child(0) as SparkBolt
+	var hp_before := player.hp
+	await _until(func() -> bool: return not is_instance_valid(bolt) or bolt.global_position.distance_to(player.global_position + Vector3.UP * 0.85) < 1.4)
+	var side := Vector3(-bolt.direction.z, 0, bolt.direction.x) if is_instance_valid(bolt) else Vector3.RIGHT
+	_set_stick(_stick_axes_for_world(side))
+	_joy(JOY_AXIS_TRIGGER_LEFT, 1.0)
+	await _seconds(0.07)
+	await _shot("44_dodge_bolt")
+	_joy(JOY_AXIS_TRIGGER_LEFT, 0.0)
+	_set_stick(Vector2.ZERO)
+	await _seconds(0.5)
+	print("QA dodge bolt hp_before=%d hp_after=%d" % [int(hp_before), int(player.hp)])
+	var to := s.global_position - player.global_position
+	to.y = 0
+	_set_stick(_stick_axes_for_world(to.normalized()))
+	await _until(func() -> bool: return player.global_position.distance_to(s.global_position) < 1.5, 3.0)
+	_set_stick(Vector2.ZERO)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _until(func() -> bool: return s.state == Sparker.State.HIT or s.is_defeated, 2.0)
+	await _seconds(0.05)
+	await _shot("45_sparker_hit")
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	print("QA sparker after hammer hp=%d state=%s" % [int(s.hp), Sparker.State.keys()[s.state]])
+	# Funkenwerfer über die Kante.
+	main.call("restart")
+	await _seconds(0.2)
+	for c in arena.combatants():
+		c.call("stop_combat")
+	s.global_position = Vector3(5.9, 0, 0)
+	s.rotation.y = PlayerController.yaw_for_direction(Vector3.LEFT)
+	player.global_position = Vector3(4.6, 0, 0)
+	await _seconds(0.4)
+	# Facing erst unmittelbar vor dem Controller-Druck setzen (sonst überschreibt eine aktive Mausquelle es).
+	player.facing_direction = Vector3.RIGHT
+	player.rotation.y = PlayerController.yaw_for_direction(Vector3.RIGHT)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _seconds(0.1)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	await _seconds(0.5)
+	await _shot("46_sparker_over_edge")
+	await _until(func() -> bool: return s.is_defeated, 2.0)  # Fall bis zur Killhöhe dauert ≈0,75 s
+	print("QA sparker edge defeated=%s reason=%s" % [s.is_defeated, Sparker.DefeatReason.keys()[s.last_defeat_reason]])
+	# Skriptkampf als Zeitreihe um den Spieler (RT gehalten, nächster Gegner, Kantenvorsicht).
+	main.call("restart")
+	await _seconds(0.3)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _contact_sheet("47_mixed_fight_sheet", 5.0, 40, func(_t: float) -> void: _drive_hold_forward())
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	_set_stick(Vector2.ZERO)
+	# Sieg, Niederlage, Spielerfall.
+	main.call("restart")
+	await _seconds(0.3)
+	for c in arena.combatants():
+		c.call("stop_combat")
+	var lethal := HitInfo.new()
+	lethal.damage = 200.0
+	arena.active_enemies[0].receive_hit(lethal)
+	arena.active_enemies[1].receive_hit(lethal)
+	s.receive_hit(lethal)
+	await _until(func() -> bool: return (main.get("result_overlay") as EncounterOverlay).is_open(), 3.0)
+	await _shot("48_mixed_victory")
+	await _click_restart()
+	await _seconds(0.3)
+	player.hp = 15.0
+	await _until(func() -> bool: return (main.get("result_overlay") as EncounterOverlay).is_open(), 10.0)
+	await _shot("49_mixed_defeat")
+	await _click_restart()
+	await _seconds(0.3)
+	player.global_position = Vector3(5.8, 0, 3.0)
+	_set_stick(_stick_axes_for_world(Vector3.RIGHT))
+	await _until(func() -> bool: return player.state == PlayerController.State.FALLING)
+	await _seconds(0.15)
+	await _shot("50_mixed_player_fall")
+	_set_stick(Vector2.ZERO)
+	await _until(func() -> bool: return player.state == PlayerController.State.MOVE and player.global_position.y > -0.5)
+	await _seconds(0.3)
+	await _shot("51_mixed_after_fall_reset")
+	var pause := main.get("pause_menu") as PauseMenu
+	pause.open()
+	await _seconds(0.3)
+	await _shot("52_pause_mixed")
+	pause.close()
+	await _seconds(0.2)
+
+
+func _mixed_isolate_sparker() -> void:
+	for c in arena.combatants():
+		c.call("stop_combat")
+	arena.active_enemies[0].global_position = Vector3(5.0, 0, -4.0)
+	arena.active_enemies[1].global_position = Vector3(-5.5, 0, -4.0)
+	var s: Sparker = arena.sparker
+	player.global_position = Vector3(1.0, 0, 0.5)
+	s.global_position = Vector3(-3.0, 0, 0.5)
+	s.rotation.y = PlayerController.yaw_for_direction(Vector3.RIGHT)
+	s.target = player
+
+
+func _mixed_movie() -> void:
+	main.call("set_mode", TrainingArena.Mode.MIXED)
+	main.call("set_profile", TrainingArena.StunProfile.SHORT)
+	await _seconds(0.8)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	var start := Time.get_ticks_msec()
+	while (Time.get_ticks_msec() - start) < 30000 and arena.encounter == TrainingArena.Encounter.RUNNING:
+		_drive_hold_forward()
+		await get_tree().physics_frame
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	_set_stick(Vector2.ZERO)
+	await _seconds(1.5)
+	if arena.last_stats != null:
+		print("QA movie summary: %s" % arena.last_stats.to_line())

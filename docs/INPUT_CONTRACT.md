@@ -12,7 +12,8 @@ Dieser Vertrag definiert Verhalten, nicht eine konkrete Klasse.
 | Dodge | RMB oder Space, neu drücken | LT/L2, neu drücken | Dodge neu berühren |
 | Pause | Escape | Start/Menu | Pausebutton |
 | Reset | Pausenmenü; R optional Debug | Pausenmenü | Pausenmenü |
-| Moduswahl Kampf/Training (M2A) | Pausenmenü | Pausenmenü | Pausenmenü |
+| Szenario Gemischt/Gruppe/Duell/Training (M2C) | Pausenmenü (zyklisch) | Pausenmenü | Pausenmenü |
+| Benommenheitsprofil A/B (M2B) | Pausenmenü | Pausenmenü | Pausenmenü |
 | Neustart nach Sieg/Niederlage (M2A) | Button, Enter oder R | A auf fokussiertem Button | Button |
 
 ## Camera-relative Bewegung

@@ -23,9 +23,19 @@ func is_open() -> bool:
 	return visible
 
 
-func show_result(victory: bool) -> void:
-	_title.text = "Scrapling besiegt!" if victory else "Niederlage"
-	_subtitle.text = "Gut geschlagen." if victory else "Der Scrapling hat dich erwischt."
+func set_next_scenario(scenario: String) -> void:
+	_mode_button.text = "Szenario wechseln: %s" % scenario
+
+
+## Ergebnis mit kurzer Rundenzusammenfassung (Dauer, Schaden, Gegnerangriffe).
+func show_result(victory: bool, scenario: String, summary: String) -> void:
+	var victory_title := "Scrapling besiegt!"
+	if scenario == "Gruppe":
+		victory_title = "Alle Scraplings besiegt!"
+	elif scenario == "Gemischt":
+		victory_title = "Alle Gegner besiegt!"
+	_title.text = victory_title if victory else "Niederlage"
+	_subtitle.text = summary
 	_title.modulate = Color(1.0, 0.8, 0.35) if victory else Color(1.0, 0.4, 0.3)
 	visible = true
 	_restart_button.grab_focus()

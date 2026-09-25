@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="SparkerTuning" format=3]
+
+[ext_resource type="Script" path="res://scripts/actors/sparker_tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")
+max_hp = 60.0
+move_speed = 2.0
+acceleration = 12.0
+deceleration = 18.0
+turn_sharpness = 6.0
+fire_distance = 6.0
+min_approach_distance = 1.5
+charge_time = 0.65
+commit_time = 0.45
+recovery_time = 1.0
+hit_stun = 0.2
+hit_radius = 0.4
+edge_probe_distance = 0.55
+separation_radius = 1.6
+separation_strength = 1.2
+ground_friction = 30.0
+muzzle_height = 0.85
+muzzle_forward = 0.62
+projectile_speed = 6.0
+projectile_damage = 10.0
+projectile_radius = 0.13
+projectile_lifetime = 2.5
+projectile_knockback_speed = 3.0
+projectile_knockback_duration = 0.15

@@ -30,6 +30,25 @@ Drei Kernfragen:
 
 Kernfragen: Ist der Angriff rechtzeitig lesbar? Fühlt sich Ausweichen fair an? Ist Dauerschlagen zu stark?
 
+## M2B-Gruppenkampf (Controller-Spieltest)
+
+1. Gruppe/Profil A: RT halten und schlicht vorwärts auf den nächsten Gegner laufen.
+2. Gruppe/Profil A: offensiv umlaufen, Ziele wechseln, gezielt dodgen (RT darf gehalten bleiben).
+3. Pause → Benommenheit Profil B: beide Vorgehensweisen wiederholen und vergleichen.
+4. Bei Bedarf Pause → Szenario Duell (Profil A) als Referenz.
+
+Kernfragen: Entsteht durch drei Bedrohungen ein dynamischer Kampf? Lohnt sich Bewegung/Dodge? Ist stures RT-Halten noch universell? Sind drei gleichzeitige Markierungen lesbar? Fühlen sich Trefferketten fair an? Rundenzusammenfassungen stehen nach jeder Runde in der Ergebnisanzeige und in `user://encounter_log.txt`.
+
+## M2C-Mischkampf (Controller-Spieltest, Standardstart)
+
+1. Scraplings bekämpfen und den Funkenwerfer zunächst ignorieren.
+2. Schüsse durch normale Bewegung und Dodge vermeiden (Aufladen, Festlegung, Schuss lesbar?).
+3. Den Funkenwerfer zuerst ausschalten (Distanz überwinden, Hammer).
+4. Dabei Kanten und sichere Ausweichrichtungen beachten.
+5. Pause → Szenario Gruppe: mit der Drei-Scrapling-Gruppe vergleichen.
+
+Kernfragen: Erzeugt der Schütze Positionierungsentscheidungen? Ist ein Schuss rechtzeitig lesbar, auch neben zwei Nahkämpfern? Fühlen sich gemischte Treffer (Hieb + Bolzen) fair an?
+
 ## Automatisierbare M1-Regeln
 
 | ID | Verhalten |

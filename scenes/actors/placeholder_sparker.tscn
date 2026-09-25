@@ -1,0 +1,169 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/actors/placeholder_sparker_visual.gd" id="1_visual"]
+
+[sub_resource type="StandardMaterial3D" id="Mat_tank"]
+albedo_color = Color(0.2, 0.34, 0.36, 1)
+metallic = 0.5
+roughness = 0.55
+
+[sub_resource type="StandardMaterial3D" id="Mat_brass"]
+albedo_color = Color(0.78, 0.6, 0.25, 1)
+metallic = 0.7
+roughness = 0.35
+
+[sub_resource type="StandardMaterial3D" id="Mat_dark"]
+albedo_color = Color(0.1, 0.11, 0.12, 1)
+metallic = 0.4
+roughness = 0.6
+
+[sub_resource type="StandardMaterial3D" id="Mat_core"]
+albedo_color = Color(1, 0.55, 0.15, 1)
+emission_enabled = true
+emission = Color(1, 0.45, 0.1, 1)
+emission_energy_multiplier = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_charge"]
+albedo_color = Color(1, 0.95, 0.6, 1)
+emission_enabled = true
+emission = Color(1, 0.75, 0.3, 1)
+emission_energy_multiplier = 3.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_flash"]
+transparency = 1
+blend_mode = 1
+shading_mode = 0
+albedo_color = Color(1, 0.85, 0.5, 0.9)
+
+[sub_resource type="CylinderMesh" id="Mesh_leg"]
+material = SubResource("Mat_dark")
+top_radius = 0.06
+bottom_radius = 0.09
+height = 0.34
+radial_segments = 8
+rings = 1
+
+[sub_resource type="CylinderMesh" id="Mesh_tank"]
+material = SubResource("Mat_tank")
+top_radius = 0.36
+bottom_radius = 0.44
+height = 0.56
+radial_segments = 16
+rings = 1
+
+[sub_resource type="CylinderMesh" id="Mesh_band"]
+material = SubResource("Mat_brass")
+top_radius = 0.43
+bottom_radius = 0.45
+height = 0.08
+radial_segments = 16
+rings = 1
+
+[sub_resource type="SphereMesh" id="Mesh_core"]
+material = SubResource("Mat_core")
+radius = 0.15
+height = 0.3
+radial_segments = 12
+rings = 6
+
+[sub_resource type="CylinderMesh" id="Mesh_barrel"]
+material = SubResource("Mat_dark")
+top_radius = 0.1
+bottom_radius = 0.12
+height = 0.72
+radial_segments = 12
+rings = 1
+
+[sub_resource type="CylinderMesh" id="Mesh_ring"]
+material = SubResource("Mat_brass")
+top_radius = 0.16
+bottom_radius = 0.16
+height = 0.07
+radial_segments = 16
+rings = 1
+
+[sub_resource type="SphereMesh" id="Mesh_charge"]
+material = SubResource("Mat_charge")
+radius = 0.1
+height = 0.2
+radial_segments = 12
+rings = 6
+
+[sub_resource type="SphereMesh" id="Mesh_flash"]
+material = SubResource("Mat_flash")
+radius = 0.22
+height = 0.44
+radial_segments = 12
+rings = 6
+
+[sub_resource type="CylinderMesh" id="Mesh_chimney"]
+material = SubResource("Mat_dark")
+top_radius = 0.07
+bottom_radius = 0.09
+height = 0.36
+radial_segments = 8
+rings = 1
+
+[node name="PlaceholderSparker" type="Node3D"]
+script = ExtResource("1_visual")
+
+[node name="Root" type="Node3D" parent="."]
+
+[node name="Body" type="Node3D" parent="Root"]
+
+[node name="LegFront" type="MeshInstance3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.17, -0.26)
+mesh = SubResource("Mesh_leg")
+
+[node name="LegBackLeft" type="MeshInstance3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.24, 0.17, 0.16)
+mesh = SubResource("Mesh_leg")
+
+[node name="LegBackRight" type="MeshInstance3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.24, 0.17, 0.16)
+mesh = SubResource("Mesh_leg")
+
+[node name="Tank" type="MeshInstance3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.56, 0)
+mesh = SubResource("Mesh_tank")
+
+[node name="Band" type="MeshInstance3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.62, 0)
+mesh = SubResource("Mesh_band")
+
+[node name="Core" type="MeshInstance3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -0.34)
+mesh = SubResource("Mesh_core")
+
+[node name="Chimney" type="MeshInstance3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.18, 1.0, 0.16)
+mesh = SubResource("Mesh_chimney")
+
+[node name="Cannon" type="Node3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, 0)
+
+[node name="Barrel" type="MeshInstance3D" parent="Root/Body/Cannon"]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0, -0.26)
+mesh = SubResource("Mesh_barrel")
+
+[node name="MuzzleRing" type="MeshInstance3D" parent="Root/Body/Cannon"]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0, -0.6)
+mesh = SubResource("Mesh_ring")
+
+[node name="Charge" type="MeshInstance3D" parent="Root/Body/Cannon"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.66)
+mesh = SubResource("Mesh_charge")
+
+[node name="MuzzleFlash" type="MeshInstance3D" parent="Root/Body/Cannon"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.7)
+cast_shadow = 0
+mesh = SubResource("Mesh_flash")
+
+[node name="HpLabel" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.55, 0)
+billboard = 1
+no_depth_test = true
+pixel_size = 0.006
+text = "HP 60"
+font_size = 44
+outline_size = 12
