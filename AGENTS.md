@@ -57,7 +57,7 @@ Keine Shops, Craftingbäume, Meta-Währungen, Multiplayer, Cloud-Dienste, Analyt
 - Bewegungsvektoren werden camera-relative auf die XZ-Ebene projiziert.
 - Maus-Facing entsteht durch Ray/Plane- beziehungsweise Ray/World-Schnitt in 3D; niemals aus rohen Screenpixeln direkt in Weltkoordinaten.
 - `move_direction`, `facing_direction`, `attack_direction` und `dodge_direction` bleiben getrennte Zustände.
-- Attack-Richtung wird zu Beginn des Schlags fixiert; Gegner beeinflussen sie nicht.
+- Attack-Richtung folgt während des Ausholens (WINDUP) der bewussten Ausrichtung und wird beim Eintritt in die aktive Trefferphase (ACTIVE) fixiert; Gegner beeinflussen sie nicht.
 - Kein Teleport-Dodge und kein FPS-abhängiger Knockback.
 - Offene Kanten erhalten keine unsichtbaren Schutzcollider.
 - M1 darf einen Kill-/Reset-Plane unter der Arena verwenden; das ist keine Randbarriere.

@@ -19,10 +19,15 @@ func _ready() -> void:
 			_out_dir = "res://" + arg.trim_prefix("--qa-out=")
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(_out_dir))
 	main = MAIN_SCENE.instantiate()
+	# Die M1/M1.1-Sequenz läuft im Trainingsmodus, danach folgt die M2A-Kampfsequenz.
+	main.set("start_mode", TrainingArena.Mode.TRAINING)
 	add_child(main)
 	player = main.get("player")
 	arena = main.get("arena")
 	camera = (main.get("camera_rig") as CameraRig).camera
+	# Quellenwechsel protokollieren: echte Maus-/Controllerereignisse des Systems stören sonst unbemerkt.
+	InputRouter.source_changed.connect(func(_source: int) -> void:
+		print("QA source_changed -> %s at %.2fs" % [InputRouter.source_name(), Time.get_ticks_msec() / 1000.0]))
 	await _run()
 	get_tree().quit()
 
@@ -120,6 +125,27 @@ func _run() -> void:
 	_touch(1, false, tc.attack_center())
 	InputRouter.set_touch_test_mode(false)
 
+	# M1.1: Swing-Verlauf und RT gehalten + 360°-Stick als Zeitreihen-Kontaktabzug.
+	InputRouter._switch_source(InputRouter.Source.KEYBOARD_MOUSE)
+	player.global_position = Vector3(-1.5, 0, 0.5)
+	player.facing_direction = Vector3.RIGHT
+	_set_stick(Vector2(0.9, 0))
+	_set_stick(Vector2.ZERO)
+	await _seconds(0.6)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _contact_sheet("13_single_swing_sheet", player.weapon.data.total_duration(), 24, func(_t: float) -> void: pass)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	await _seconds(0.6)
+	var sweep := 2.4
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _contact_sheet("14_held_rt_360_sheet", sweep, 32, func(t: float) -> void:
+		_set_stick(Vector2(cos(TAU * t / sweep), -sin(TAU * t / sweep)) * 0.8))
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	_set_stick(Vector2.ZERO)
+	await _seconds(0.3)
+
+	await _combat_sequence()
+
 	# Pausemenü.
 	(main.get("pause_menu") as PauseMenu).open()
 	await _seconds(0.3)
@@ -165,6 +191,45 @@ func _shot(shot_name: String) -> void:
 	print("QA shot %s (%dx%d)" % [path, image.get_width(), image.get_height()])
 
 
+## Zeitreihe: count gleichmäßig über duration verteilte Ausschnitte um den Player, zeilenweise
+## von links oben nach rechts unten. drive(t) wird jedes Frame mit der verstrichenen Zeit aufgerufen.
+func _contact_sheet(sheet_name: String, duration: float, count: int, drive: Callable, focus: Node3D = null) -> void:
+	const TILE := 200
+	const CROP := 320.0
+	const COLUMNS := 8
+	var rows := ceili(count / float(COLUMNS))
+	var sheet := Image.create(TILE * COLUMNS, TILE * rows, false, Image.FORMAT_RGBA8)
+	var start := Time.get_ticks_usec()
+	var index := 0
+	var phases: PackedStringArray = []
+	while index < count:
+		var t := (Time.get_ticks_usec() - start) / 1000000.0
+		drive.call(t)
+		await RenderingServer.frame_post_draw
+		if t < index * duration / count:
+			continue
+		var image := get_viewport().get_texture().get_image()
+		var to_pixels := image.get_width() / get_viewport().get_visible_rect().size.x
+		var focus_node: Node3D = focus if focus != null else player
+		var center := camera.unproject_position(focus_node.global_position + Vector3.UP * 0.7) * to_pixels
+		var size := int(CROP * to_pixels)
+		var origin := Vector2i(clampi(int(center.x) - size / 2, 0, image.get_width() - size),
+				clampi(int(center.y) - size / 2, 0, image.get_height() - size))
+		var part := image.get_region(Rect2i(origin, Vector2i(size, size)))
+		part.convert(Image.FORMAT_RGBA8)
+		part.resize(TILE, TILE)
+		sheet.blit_rect(part, Rect2i(0, 0, TILE, TILE), Vector2i((index % COLUMNS) * TILE, (index / COLUMNS) * TILE))
+		var phase := "-"
+		var focus_weapon: WeaponController = focus_node.get("weapon")
+		if focus_weapon != null and focus_weapon.is_busy():
+			phase = WeaponController.Phase.keys()[focus_weapon.phase].substr(0, 3)
+		phases.append("%d:%s" % [index, phase])
+		index += 1
+	var path := "%s/%s.png" % [_out_dir, sheet_name]
+	sheet.save_png(ProjectSettings.globalize_path(path))
+	print("QA sheet %s over %.2fs: %s" % [path, duration, " ".join(phases)])
+
+
 func _push(event: InputEvent) -> void:
 	get_viewport().push_input(event, true)
 
@@ -204,3 +269,129 @@ func _drag(index: int, pos: Vector2) -> void:
 	e.index = index
 	e.position = pos
 	_push(e)
+
+
+# --- M2A-Kampfsequenz ----------------------------------------------------------------
+
+func _combat_sequence() -> void:
+	main.call("set_mode", TrainingArena.Mode.COMBAT)
+	var enemy: Scrapling = arena.enemy
+	await _seconds(0.6)
+	await _shot("15_combat_start")
+	print("QA combat start player=%s enemy=%s" % [player.global_position, enemy.global_position])
+	await _measure_rates(3.0)
+
+	# Annäherung und vollständiger Angriffszyklus als Zeitreihe um den Gegner (Spieler steht).
+	await _contact_sheet("16_enemy_cycle_sheet", 3.6, 40, func(_t: float) -> void: pass, enemy)
+	main.call("restart")
+	await _seconds(0.3)
+
+	# Einzelphasen: Gegner nahe am Spieler, Spieler steht.
+	_place_enemy_near_player(1.35)
+	await _until(func() -> bool: return enemy.state == Scrapling.State.ATTACK and enemy.weapon.phase_progress() > 0.25)
+	await _shot("17_enemy_windup_tracking")
+	await _until(func() -> bool: return enemy.is_committed() and enemy.weapon.phase_progress() > 0.8)
+	await _shot("18_enemy_committed_marker")
+	await _until(func() -> bool: return enemy.weapon.phase == WeaponController.Phase.ACTIVE and enemy.weapon.phase_progress() > 0.3)
+	await _shot("19_enemy_active_hit")
+	await _until(func() -> bool: return enemy.weapon.phase == WeaponController.Phase.RECOVERY and enemy.weapon.phase_progress() > 0.35)
+	await _shot("20_enemy_recovery")
+	print("QA enemy_hit player_hp=%d" % int(player.hp))
+
+	# Ausweichen nach der Festlegung: Dodge seitlich aus dem Sektor.
+	main.call("restart")
+	await _seconds(0.3)
+	_place_enemy_near_player(1.35)
+	await _until(func() -> bool: return enemy.is_committed())
+	var to_enemy := enemy.global_position - player.global_position
+	var side := Vector3(-to_enemy.z, 0, to_enemy.x).normalized()
+	_set_stick(_stick_axes_for_world(side))
+	_joy(JOY_AXIS_TRIGGER_LEFT, 1.0)
+	await _seconds(0.08)
+	await _shot("21_player_dodge_evade")
+	_joy(JOY_AXIS_TRIGGER_LEFT, 0.0)
+	_set_stick(Vector2.ZERO)
+	await _until(func() -> bool: return enemy.weapon.phase == WeaponController.Phase.RECOVERY)
+	print("QA dodge_evade player_hp=%d" % int(player.hp))
+	# Zurückschlagen während der Erholung.
+	var back := enemy.global_position - player.global_position
+	back.y = 0
+	player.facing_direction = back.normalized()
+	_set_stick(_stick_axes_for_world(back.normalized()) * 0.6)
+	await _seconds(0.25)
+	_set_stick(Vector2.ZERO)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _until(func() -> bool: return player.weapon.phase == WeaponController.Phase.ACTIVE)
+	await _seconds(0.05)
+	await _shot("22_player_counter_hit")
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	await _seconds(0.5)
+	print("QA counter enemy_hp=%d enemy_state=%s" % [int(enemy.hp), Scrapling.State.keys()[enemy.state]])
+
+	# Gegner über die Kante schlagen → Sieg.
+	main.call("restart")
+	await _seconds(0.3)
+	enemy.target = null
+	enemy.global_position = Vector3(5.9, 0, 0)
+	enemy.rotation.y = PlayerController.yaw_for_direction(Vector3.LEFT)
+	player.global_position = Vector3(4.6, 0, 0)
+	player.facing_direction = Vector3.RIGHT
+	await _seconds(0.5)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _seconds(0.1)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	await _seconds(0.5)
+	await _shot("23_enemy_over_edge")
+	await _until(func() -> bool: return (main.get("result_overlay") as EncounterOverlay).is_open())
+	await _shot("24_victory_overlay")
+	print("QA victory enemy_defeats=%d reason=%s" % [enemy.defeat_count, Scrapling.DefeatReason.keys()[enemy.last_defeat_reason]])
+	await _click_restart()
+	await _seconds(0.3)
+	await _shot("25_after_restart")
+
+	# Spielertod → Niederlage-Anzeige → Neustart.
+	player.hp = 10.0
+	_place_enemy_near_player(1.35)
+	await _until(func() -> bool: return player.state == PlayerController.State.DEAD, 4.0)
+	await _seconds(0.5)
+	await _shot("26_player_defeated")
+	await _until(func() -> bool: return (main.get("result_overlay") as EncounterOverlay).is_open())
+	await _shot("27_defeat_overlay")
+	await _click_restart()
+	await _seconds(0.3)
+	print("QA restart player_hp=%d enemy_hp=%d encounter=%s" % [int(player.hp), int(enemy.hp), TrainingArena.Encounter.keys()[arena.encounter]])
+	(main.get("pause_menu") as PauseMenu).open()
+	await _seconds(0.3)
+	await _shot("28_pause_combat")
+	(main.get("pause_menu") as PauseMenu).close()
+	await _seconds(0.2)
+
+
+func _place_enemy_near_player(distance: float) -> void:
+	var enemy: Scrapling = arena.enemy
+	var dir := Vector3(1, 0, -0.6).normalized()
+	enemy.global_position = player.global_position + dir * distance
+	enemy.rotation.y = PlayerController.yaw_for_direction(-dir)
+	enemy.velocity = Vector3.ZERO
+	enemy.target = player
+	player.facing_direction = dir
+
+
+func _stick_axes_for_world(direction: Vector3) -> Vector2:
+	var b := camera.global_basis
+	var right := Vector3(b.x.x, 0, b.x.z).normalized()
+	var forward := Vector3(-b.z.x, 0, -b.z.z).normalized()
+	return Vector2(direction.dot(right), -direction.dot(forward))
+
+
+func _click_restart() -> void:
+	var overlay := main.get("result_overlay") as EncounterOverlay
+	var button: Button = overlay.get_node("Dim/Center/Panel/Margin/VBox/RestartButton")
+	var center := button.get_global_rect().get_center()
+	for pressed in [true, false]:
+		var e := InputEventMouseButton.new()
+		e.button_index = MOUSE_BUTTON_LEFT
+		e.pressed = pressed
+		e.position = center
+		e.global_position = center
+		_push(e)

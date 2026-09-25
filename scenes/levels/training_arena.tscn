@@ -3,6 +3,7 @@
 [ext_resource type="Script" path="res://scripts/levels/training_arena.gd" id="1_arena"]
 [ext_resource type="PackedScene" path="res://scenes/actors/training_dummy.tscn" id="2_dummy"]
 [ext_resource type="Shader" path="res://assets/placeholder/platform_tiles.gdshader" id="3_tiles"]
+[ext_resource type="PackedScene" path="res://scenes/actors/scrapling.tscn" id="4_scrapling"]
 
 [sub_resource type="Environment" id="Env"]
 background_mode = 1
@@ -91,6 +92,17 @@ mesh = SubResource("Mesh_top")
 
 [node name="PlayerSpawn" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 1.5)
+
+[node name="CombatPlayerSpawn" type="Marker3D" parent="."]
+transform = Transform3D(0.496, 0, -0.868, 0, 1, 0, 0.868, 0, 0.496, -3.5, 0.05, 2)
+
+[node name="EnemySpawn" type="Marker3D" parent="."]
+transform = Transform3D(-0.496, 0, 0.868, 0, 1, 0, -0.868, 0, -0.496, 3.5, 0.02, -2)
+
+[node name="Scrapling" parent="." instance=ExtResource("4_scrapling")]
+transform = Transform3D(-0.496, 0, 0.868, 0, 1, 0, -0.868, 0, -0.496, 3.5, 0.02, -2)
+
+[node name="Effects" type="Node3D" parent="."]
 
 [node name="Dummies" type="Node3D" parent="."]
 

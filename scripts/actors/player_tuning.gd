@@ -8,7 +8,7 @@ extends Resource
 @export var deceleration: float = 30.0
 ## Horizontale Steuerbarkeit in der Luft. Klein, damit ein Fall nicht zurückgelenkt werden kann.
 @export var air_acceleration: float = 4.0
-@export var attack_move_multiplier: float = 0.70
+@export var attack_move_multiplier: float = 1.0
 ## Visuelle Drehgeschwindigkeit des Roots zum Facing (1/s). Trefferlogik nutzt Richtungsvektoren.
 @export var turn_sharpness: float = 22.0
 @export var dodge_duration: float = 0.18

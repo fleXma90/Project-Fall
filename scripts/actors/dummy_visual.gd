@@ -1,14 +1,12 @@
 class_name DummyVisual
 extends Node3D
 ## Placeholder-Darstellung des Trainingsdummys: Hitflash, Wackeln, HP-Anzeige, Umfallen.
-## Der Flash nutzt ein eigenes Overlay-Material und hängt nicht an konkreten Mesh-Materialien.
+## Der Flash (HitFlash) nutzt ein eigenes Overlay-Material und hängt nicht an konkreten Mesh-Materialien.
 
 @export var wobble_stiffness: float = 140.0
 @export var wobble_damping: float = 9.0
-@export var flash_duration: float = 0.12
 
-var _flash_material := StandardMaterial3D.new()
-var _flash_left: float = 0.0
+var _flash: HitFlash
 var _wobble_axis: Vector3 = Vector3.RIGHT
 var _wobble_angle: float = 0.0
 var _wobble_velocity: float = 0.0
@@ -21,15 +19,11 @@ var _defeat_fall: bool = false
 
 
 func _ready() -> void:
-	_flash_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_flash_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_flash_material.albedo_color = Color(1.0, 1.0, 1.0, 0.0)
-	for mesh in find_children("*", "MeshInstance3D", true, false):
-		(mesh as MeshInstance3D).material_overlay = _flash_material
+	_flash = HitFlash.new(self)
 
 
 func flash() -> void:
-	_flash_left = flash_duration
+	_flash.trigger()
 
 
 func hit_react(local_direction: Vector3) -> void:
@@ -58,16 +52,14 @@ func reset_visual() -> void:
 	_defeat_time = -1.0
 	_wobble_angle = 0.0
 	_wobble_velocity = 0.0
-	_flash_left = 0.0
+	_flash.reset()
 	_pivot.transform = Transform3D.IDENTITY
 	_pivot.scale = Vector3.ONE
 	_hp_label.visible = true
 
 
 func _process(delta: float) -> void:
-	if _flash_left > 0.0:
-		_flash_left = maxf(_flash_left - delta, 0.0)
-	_flash_material.albedo_color.a = 0.85 * (_flash_left / flash_duration)
+	_flash.update(delta)
 
 	if _defeat_time >= 0.0:
 		_defeat_time += delta

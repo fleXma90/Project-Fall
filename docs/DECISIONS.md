@@ -19,3 +19,5 @@
 | D15 | Arbeitsregel | M0/M1 zuerst; M2 und Art-Vertical-Slice separat freigeben |
 | D16 | Entwurfsstandard | M1: eine offene Plattform, Hammer, drei Dummies, Fall/Respawn |
 | D17 | Entwurfsstandard | M2: zwei Floors, echte Gegner, echter Sturz eine Ebene tiefer |
+| D18 | **Aktualisiert 25.09.2026 (M1.1)** | Schlagrichtung folgt im Windup der Ausrichtung, fixiert erst bei ACTIVE; Recovery frei. Bewegung bei gehaltenem Angriff unverändert (Multiplikator 1.0). Hammer 0.26/0.12/0.42 s |
+| D19 | **Freigabe 25.09.2026 (M2A)** | Erste aktive Kampfbegegnung: ein Scrapling, Spielerschaden, iFrames wirksam, Sieg/Niederlage/Neustart, Kampfmodus als Standard; restlicher M2 gesperrt |

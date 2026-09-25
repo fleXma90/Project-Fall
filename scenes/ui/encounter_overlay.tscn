@@ -1,6 +1,6 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" path="res://scripts/ui/pause_menu.gd" id="1_pause"]
+[ext_resource type="Script" path="res://scripts/ui/encounter_overlay.gd" id="1_overlay"]
 
 [sub_resource type="StyleBoxFlat" id="Style_panel"]
 bg_color = Color(0.08, 0.08, 0.1, 0.95)
@@ -14,10 +14,10 @@ corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
 
-[node name="PauseMenu" type="CanvasLayer"]
+[node name="EncounterOverlay" type="CanvasLayer"]
 process_mode = 3
-layer = 20
-script = ExtResource("1_pause")
+layer = 18
+script = ExtResource("1_overlay")
 
 [node name="Dim" type="ColorRect" parent="."]
 anchors_preset = 15
@@ -25,7 +25,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0, 0, 0, 0.55)
+color = Color(0, 0, 0, 0.4)
 
 [node name="Center" type="CenterContainer" parent="Dim"]
 layout_mode = 1
@@ -52,37 +52,31 @@ theme_override_constants/separation = 14
 
 [node name="Title" type="Label" parent="Dim/Center/Panel/Margin/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 34
-text = "Pause"
+theme_override_font_sizes/font_size = 36
+text = "Ergebnis"
 horizontal_alignment = 1
 
-[node name="ResumeButton" type="Button" parent="Dim/Center/Panel/Margin/VBox"]
-custom_minimum_size = Vector2(340, 64)
+[node name="Subtitle" type="Label" parent="Dim/Center/Panel/Margin/VBox"]
+modulate = Color(1, 1, 1, 0.75)
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
-text = "Weiter"
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 1
 
-[node name="ResetButton" type="Button" parent="Dim/Center/Panel/Margin/VBox"]
+[node name="RestartButton" type="Button" parent="Dim/Center/Panel/Margin/VBox"]
 custom_minimum_size = Vector2(340, 64)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
-text = "Training zurücksetzen"
+text = "Neustart"
 
 [node name="ModeButton" type="Button" parent="Dim/Center/Panel/Margin/VBox"]
-custom_minimum_size = Vector2(340, 56)
-layout_mode = 2
-theme_override_font_sizes/font_size = 20
-text = "Modus wechseln: Training"
-
-[node name="TouchTestButton" type="Button" parent="Dim/Center/Panel/Margin/VBox"]
 custom_minimum_size = Vector2(340, 52)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
-text = "Touch-Testmodus: aus"
+text = "Zum Training wechseln"
 
 [node name="Hint" type="Label" parent="Dim/Center/Panel/Margin/VBox"]
 modulate = Color(1, 1, 1, 0.6)
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
-text = "Esc / Start: weiter  ·  Controller: Steuerkreuz + A, B zurück"
+text = "Enter / A: Neustart  ·  R: Neustart"
 horizontal_alignment = 1

@@ -3,7 +3,7 @@ extends RefCounted
 ## Vom Gameplay pro Physiktick befüllter Darstellungszustand. Gameplaytiming ist die Quelle der Wahrheit;
 ## ein Visual-Adapter (Placeholder oder später riggtes Modell) liest nur diese Werte.
 
-enum Action { NONE, ATTACK_WINDUP, ATTACK_ACTIVE, ATTACK_RECOVERY, DODGE }
+enum Action { NONE, ATTACK_WINDUP, ATTACK_ACTIVE, ATTACK_RECOVERY, DODGE, HIT }
 
 ## Horizontale Geschwindigkeit relativ zur Laufgeschwindigkeit (0..~2).
 var move_amount: float = 0.0
@@ -11,6 +11,8 @@ var move_amount: float = 0.0
 var local_move_direction: Vector3 = Vector3.ZERO
 var grounded: bool = true
 var falling: bool = false
+## Spieler besiegt (HP 0): Darstellung bleibt in der Niederlagepose.
+var dead: bool = false
 var action: Action = Action.NONE
 ## Fortschritt der aktuellen Aktionsphase 0..1.
 var action_progress: float = 0.0

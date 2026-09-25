@@ -1,0 +1,164 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/actors/placeholder_scrapling_visual.gd" id="1_visual"]
+
+[sub_resource type="StandardMaterial3D" id="Mat_rust"]
+albedo_color = Color(0.55, 0.2, 0.12, 1)
+metallic = 0.35
+roughness = 0.7
+
+[sub_resource type="StandardMaterial3D" id="Mat_rust_dark"]
+albedo_color = Color(0.3, 0.12, 0.08, 1)
+metallic = 0.3
+roughness = 0.75
+
+[sub_resource type="StandardMaterial3D" id="Mat_visor"]
+albedo_color = Color(0.04, 0.04, 0.05, 1)
+
+[sub_resource type="StandardMaterial3D" id="Mat_eye"]
+albedo_color = Color(0.5, 1, 1, 1)
+emission_enabled = true
+emission = Color(0.2, 1, 0.95, 1)
+emission_energy_multiplier = 2.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_horn"]
+albedo_color = Color(0.82, 0.78, 0.68, 1)
+roughness = 0.6
+
+[sub_resource type="CylinderMesh" id="Mesh_leg"]
+material = SubResource("Mat_rust_dark")
+top_radius = 0.09
+bottom_radius = 0.11
+height = 0.32
+radial_segments = 8
+rings = 1
+
+[sub_resource type="BoxMesh" id="Mesh_torso"]
+material = SubResource("Mat_rust")
+size = Vector3(0.66, 0.46, 0.5)
+
+[sub_resource type="BoxMesh" id="Mesh_belly"]
+material = SubResource("Mat_rust_dark")
+size = Vector3(0.46, 0.26, 0.05)
+
+[sub_resource type="BoxMesh" id="Mesh_head"]
+material = SubResource("Mat_rust")
+size = Vector3(0.5, 0.34, 0.46)
+
+[sub_resource type="BoxMesh" id="Mesh_visor"]
+material = SubResource("Mat_visor")
+size = Vector3(0.44, 0.16, 0.03)
+
+[sub_resource type="SphereMesh" id="Mesh_eye"]
+material = SubResource("Mat_eye")
+radius = 0.09
+height = 0.18
+radial_segments = 12
+rings = 6
+
+[sub_resource type="BoxMesh" id="Mesh_jaw"]
+material = SubResource("Mat_rust_dark")
+size = Vector3(0.42, 0.1, 0.22)
+
+[sub_resource type="CylinderMesh" id="Mesh_horn"]
+material = SubResource("Mat_horn")
+top_radius = 0.0
+bottom_radius = 0.07
+height = 0.3
+radial_segments = 8
+rings = 1
+
+[sub_resource type="BoxMesh" id="Mesh_arm"]
+material = SubResource("Mat_rust_dark")
+size = Vector3(0.16, 0.4, 0.16)
+
+[sub_resource type="BoxMesh" id="Mesh_arm_forward"]
+material = SubResource("Mat_rust_dark")
+size = Vector3(0.16, 0.16, 0.36)
+
+[sub_resource type="BoxMesh" id="Mesh_hand"]
+material = SubResource("Mat_rust")
+size = Vector3(0.2, 0.2, 0.2)
+
+[node name="PlaceholderScrapling" type="Node3D"]
+script = ExtResource("1_visual")
+
+[node name="Root" type="Node3D" parent="."]
+
+[node name="Body" type="Node3D" parent="Root"]
+
+[node name="LegLeft" type="Node3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.17, 0.32, 0)
+
+[node name="Leg" type="MeshInstance3D" parent="Root/Body/LegLeft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.16, 0)
+mesh = SubResource("Mesh_leg")
+
+[node name="LegRight" type="Node3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.17, 0.32, 0)
+
+[node name="Leg" type="MeshInstance3D" parent="Root/Body/LegRight"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.16, 0)
+mesh = SubResource("Mesh_leg")
+
+[node name="Torso" type="MeshInstance3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0)
+mesh = SubResource("Mesh_torso")
+
+[node name="Belly" type="MeshInstance3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.52, -0.26)
+mesh = SubResource("Mesh_belly")
+
+[node name="Head" type="MeshInstance3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.93, -0.06)
+mesh = SubResource("Mesh_head")
+
+[node name="Visor" type="MeshInstance3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, -0.3)
+mesh = SubResource("Mesh_visor")
+
+[node name="Eye" type="MeshInstance3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, -0.31)
+mesh = SubResource("Mesh_eye")
+
+[node name="Jaw" type="MeshInstance3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.76, -0.24)
+mesh = SubResource("Mesh_jaw")
+
+[node name="HornLeft" type="MeshInstance3D" parent="Root/Body"]
+transform = Transform3D(0.94, 0.34, 0, -0.34, 0.94, 0, 0, 0, 1, -0.2, 1.2, 0)
+mesh = SubResource("Mesh_horn")
+
+[node name="HornRight" type="MeshInstance3D" parent="Root/Body"]
+transform = Transform3D(0.94, -0.34, 0, 0.34, 0.94, 0, 0, 0, 1, 0.2, 1.2, 0)
+mesh = SubResource("Mesh_horn")
+
+[node name="ArmLeft" type="Node3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.42, 0.68, 0)
+
+[node name="Arm" type="MeshInstance3D" parent="Root/Body/ArmLeft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.2, 0)
+mesh = SubResource("Mesh_arm")
+
+[node name="SwingPivot" type="Node3D" parent="Root/Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.4, 0.68, 0)
+
+[node name="Arm" type="MeshInstance3D" parent="Root/Body/SwingPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.18)
+mesh = SubResource("Mesh_arm_forward")
+
+[node name="Hand" type="MeshInstance3D" parent="Root/Body/SwingPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.36)
+mesh = SubResource("Mesh_hand")
+
+[node name="HandSocket" type="Marker3D" parent="Root/Body/SwingPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.38)
+
+[node name="HpLabel" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.75, 0)
+billboard = 1
+no_depth_test = true
+pixel_size = 0.006
+text = "HP 80"
+font_size = 44
+outline_size = 12

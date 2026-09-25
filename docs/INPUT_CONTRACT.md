@@ -12,6 +12,8 @@ Dieser Vertrag definiert Verhalten, nicht eine konkrete Klasse.
 | Dodge | RMB oder Space, neu drücken | LT/L2, neu drücken | Dodge neu berühren |
 | Pause | Escape | Start/Menu | Pausebutton |
 | Reset | Pausenmenü; R optional Debug | Pausenmenü | Pausenmenü |
+| Moduswahl Kampf/Training (M2A) | Pausenmenü | Pausenmenü | Pausenmenü |
+| Neustart nach Sieg/Niederlage (M2A) | Button, Enter oder R | A auf fokussiertem Button | Button |
 
 ## Camera-relative Bewegung
 
@@ -33,7 +35,15 @@ Der Player kann mit WASD seitlich/rückwärts relativ zum Facing laufen und zur 
 
 ## Attack
 
-Beim Angriffstart `attack_direction` aus gültigem Facing kopieren und für Windup + aktive Phase fixieren. Gegnerposition verändert den Winkel nicht.
+Richtungsregel (seit M1.1, nach Controller-Feedback):
+
+- Bewegung bleibt in allen Angriffsphasen camera-relative und vom aktuellen Input abhängig.
+- **WINDUP:** Die bevorstehende `attack_direction` folgt der bewussten aktuellen Stick-/Mausausrichtung (über die sichtbare, weich nachgeführte Körperausrichtung).
+- **ACTIVE:** Beim Eintritt wird `attack_direction` fixiert. Treffersektor, Körperausrichtung und Trail bleiben auf dieser Richtung; die Position darf sich durch normale Bewegung ändern.
+- **RECOVERY:** Körperausrichtung wieder frei; keine Treffer.
+- Der nächste (gehaltene) Angriff nutzt die neueste Richtung. Neutraler Stick behält die letzte bewusste Richtung.
+
+Gegnerposition verändert den Winkel nie.
 
 Gedrückthalten darf den nächsten vollständigen Angriff starten, sobald Zustand/Takt erlauben. Loslassen/erneutes Drücken resetten keinen Cooldown. UI-Klicks dürfen keinen Weltangriff auslösen.
 

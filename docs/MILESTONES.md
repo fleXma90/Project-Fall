@@ -34,7 +34,20 @@ Abnahme:
 
 **Stopp:** kein echter zweiter Floor, keine KI, kein XP, keine Produktionsassets.
 
+## M2A — erste aktive Kampfbegegnung (begrenzter Teilmeilenstein)
+
+**Ausdrücklich freigegeben am 25.09.2026, nur dieser Teil von M2.** Umsetzung: `docs/reports/M2A_REPORT.md`.
+
+- bestehende Plattform, Kampfmodus als Standardstart; M1-Trainingsmodus per Moduswahl erreichbar,
+- genau ein aktiver Nahkampfgegner (Scrapling) mit Annäherung, angekündigtem Angriff, Recovery,
+- Spielerschaden über explizite Trefferschnittstelle, Dodge-iFrames wirksam,
+- Gegner per HP oder Kante besiegbar, Spielertod, Sieg/Niederlage-Anzeige, sauberer Neustart.
+
+**Nicht enthalten (bleibt gesperrt):** mehrere Gegner, zweiter Gegnertyp, zweite Ebene, Sturzschaden, regulärer Abstieg, XP/Upgrades.
+
 ## M2 — zwei Ebenen + echte Gegner + echter Fall
+
+**Restumfang nicht freigegeben** (M2A ausgenommen).
 
 Nach ausdrücklicher Freigabe:
 
@@ -57,7 +70,7 @@ RunState, überschaubares XP-Grundwachstum und wenige mechanische Hammer-Upgrade
 
 Kann nach tragfähigem M1/M2 ausdrücklich beauftragt werden; nicht automatisch Teil der Nummernfolge.
 
-Ein finalnaher Scrap-Golem, ein Hammer, ein Gegner, kleines Plattform-/Prop-Kit, erste echte Animationen und VFX. Pipeline gemäß `ASSET_PIPELINE.md`.
+Ein finalnaher Scrap-Golem, ein Hammer (vorgesehen als **Zweihandwaffe**; der M1-Placeholder hält ihn einhändig und bleibt bis dahin so), ein Gegner, kleines Plattform-/Prop-Kit, erste echte Animationen und VFX. Pipeline gemäß `ASSET_PIPELINE.md`.
 
 Ziel: beweisen, dass AI/Blender/Mixamo/GLB/Godot technisch und visuell zusammen funktionieren, **bevor** viele Assets produziert werden.
 

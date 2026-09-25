@@ -19,7 +19,7 @@ enum Phase { IDLE, WINDUP, ACTIVE, RECOVERY }
 
 var phase: Phase = Phase.IDLE
 var swing_id: int = 0
-## Beim Start fixierte Schlagrichtung (XZ, normalisiert).
+## Schlagrichtung (XZ, normalisiert). Während WINDUP per aim() nachführbar, ab ACTIVE fixiert.
 var direction: Vector3 = Vector3.FORWARD
 
 var _phase_time: float = 0.0
@@ -48,13 +48,19 @@ func is_busy() -> bool:
 
 
 func start_swing(attack_direction: Vector3) -> void:
-	var flat := Vector3(attack_direction.x, 0.0, attack_direction.z)
-	direction = flat.normalized() if flat.length_squared() > 0.0001 else Vector3.FORWARD
+	direction = _flat_direction(attack_direction, Vector3.FORWARD)
 	swing_id += 1
 	phase = Phase.WINDUP
 	_phase_time = 0.0
 	_hit_ids.clear()
 	swing_started.emit(swing_id, direction)
+
+
+## Bevorstehende Schlagrichtung nachführen. Wirkt nur während WINDUP; beim Eintritt in ACTIVE
+## ist die Richtung fixiert und der Treffersektor dreht nicht mehr mit.
+func aim(attack_direction: Vector3) -> void:
+	if phase == Phase.WINDUP:
+		direction = _flat_direction(attack_direction, direction)
 
 
 func cancel() -> void:
@@ -130,9 +136,11 @@ func _query_hits() -> void:
 		if not is_in_sector(origin, direction, target.global_position, target_radius,
 				data.attack_range, data.arc_degrees, data.max_height_difference):
 			continue
-		_hit_ids[id] = true
 		var hit := _make_hit(origin, target.global_position)
+		# Nur ein angewendeter Treffer verbraucht das Ziel für diesen Swing. Abgewehrte Treffer
+		# (z. B. Dodge-iFrames) dürfen später im selben ACTIVE-Fenster noch normal treffen.
 		if target.call("receive_hit", hit):
+			_hit_ids[id] = true
 			var toward_origin := origin - target.global_position
 			toward_origin.y = 0.0
 			var point := target.global_position + Vector3.UP * 0.8 + toward_origin.normalized() * target_radius
@@ -154,6 +162,11 @@ func _make_hit(origin: Vector3, target_pos: Vector3) -> HitInfo:
 	hit.attack_direction = direction
 	hit.source = get_parent() as Node3D
 	return hit
+
+
+static func _flat_direction(value: Vector3, fallback: Vector3) -> Vector3:
+	var flat := Vector3(value.x, 0.0, value.z)
+	return flat.normalized() if flat.length_squared() > 0.0001 else fallback
 
 
 func _phase_duration(p: Phase) -> float:

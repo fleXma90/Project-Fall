@@ -103,6 +103,16 @@ func respawn() -> void:
 	_update_visual_hp()
 
 
+## Im Kampfmodus stehen die Dummies nicht herum: unsichtbar, ohne Kollision, ohne Verarbeitung.
+func set_active(active: bool) -> void:
+	process_mode = Node.PROCESS_MODE_INHERIT if active else Node.PROCESS_MODE_DISABLED
+	visible = active
+	collision_layer = _collision_layer_default if active and not is_defeated else 0
+	if not active:
+		velocity = Vector3.ZERO
+		_knockback_left = 0.0
+
+
 ## Setzt Niederlagenzähler zurück (vollständiger Trainingsreset).
 func reset_stats() -> void:
 	defeat_count = 0

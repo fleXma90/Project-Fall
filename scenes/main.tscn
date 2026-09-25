@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/hud.tscn" id="5_hud"]
 [ext_resource type="Script" path="res://scripts/ui/touch_controls.gd" id="6_touch"]
 [ext_resource type="PackedScene" path="res://scenes/ui/pause_menu.tscn" id="7_pause"]
+[ext_resource type="PackedScene" path="res://scenes/ui/encounter_overlay.tscn" id="8_overlay"]
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_main")
@@ -37,3 +38,5 @@ mouse_filter = 2
 script = ExtResource("6_touch")
 
 [node name="PauseMenu" parent="." instance=ExtResource("7_pause")]
+
+[node name="EncounterOverlay" parent="." instance=ExtResource("8_overlay")]

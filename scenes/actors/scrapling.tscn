@@ -1,0 +1,56 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/actors/scrapling.gd" id="1_enemy"]
+[ext_resource type="Resource" path="res://resources/tuning/scrapling_tuning.tres" id="2_tuning"]
+[ext_resource type="PackedScene" path="res://scenes/actors/placeholder_scrapling.tscn" id="3_visual"]
+[ext_resource type="Script" path="res://scripts/combat/weapon_controller.gd" id="4_weapon"]
+[ext_resource type="Resource" path="res://resources/weapons/scrapling_cleaver.tres" id="5_cleaver_data"]
+[ext_resource type="PackedScene" path="res://scenes/weapons/scrapling_cleaver.tscn" id="6_cleaver"]
+[ext_resource type="Script" path="res://scripts/vfx/swing_trail.gd" id="7_trail"]
+[ext_resource type="Script" path="res://scripts/vfx/attack_telegraph.gd" id="8_telegraph"]
+
+[sub_resource type="CapsuleShape3D" id="Shape_body"]
+radius = 0.38
+height = 1.2
+
+[node name="Scrapling" type="CharacterBody3D"]
+collision_layer = 4
+collision_mask = 7
+floor_max_angle = 0.349066
+script = ExtResource("1_enemy")
+tuning = ExtResource("2_tuning")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 0)
+shape = SubResource("Shape_body")
+
+[node name="VisualRoot" type="Node3D" parent="."]
+
+[node name="PlaceholderScrapling" parent="VisualRoot" instance=ExtResource("3_visual")]
+
+[node name="WeaponController" type="Node3D" parent="." node_paths=PackedStringArray("attack_origin")]
+script = ExtResource("4_weapon")
+data = ExtResource("5_cleaver_data")
+attack_origin = NodePath("../AttackOrigin")
+hit_mask = 2
+
+[node name="WeaponMount" type="Node3D" parent="WeaponController"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.4, 0.6, -0.3)
+
+[node name="Cleaver" parent="WeaponController/WeaponMount" instance=ExtResource("6_cleaver")]
+
+[node name="AttackOrigin" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 0)
+
+[node name="SwingTrail" type="MeshInstance3D" parent="." node_paths=PackedStringArray("weapon")]
+script = ExtResource("7_trail")
+weapon = NodePath("../WeaponController")
+ribbon_width = 0.6
+height_start = 1.2
+height_end = 0.3
+color = Color(0.3, 0.95, 0.95, 1)
+
+[node name="AttackTelegraph" type="MeshInstance3D" parent="." node_paths=PackedStringArray("weapon", "enemy")]
+script = ExtResource("8_telegraph")
+weapon = NodePath("../WeaponController")
+enemy = NodePath("..")

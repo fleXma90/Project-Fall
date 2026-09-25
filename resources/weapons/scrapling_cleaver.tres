@@ -4,13 +4,13 @@
 
 [resource]
 script = ExtResource("1_weapon")
-display_name = "Hammer"
-windup = 0.26
+display_name = "Scrapling-Hackmesser"
+windup = 0.55
 active = 0.12
-recovery = 0.42
-damage = 20.0
-attack_range = 1.9
-arc_degrees = 110.0
-max_height_difference = 1.5
-knockback_speed = 8.0
-knockback_duration = 0.28
+recovery = 0.85
+damage = 15.0
+attack_range = 1.2
+arc_degrees = 100.0
+max_height_difference = 1.2
+knockback_speed = 5.5
+knockback_duration = 0.22

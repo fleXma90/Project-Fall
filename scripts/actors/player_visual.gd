@@ -18,3 +18,8 @@ func get_weapon_socket() -> Node3D:
 
 func play_respawn() -> void:
 	pass
+
+
+## Gültiger gegnerischer Treffer; Richtung des Rückstoßes im lokalen Raum des Player-Roots.
+func play_hit(_local_direction: Vector3) -> void:
+	pass

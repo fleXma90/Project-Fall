@@ -6,7 +6,7 @@ Status: BESTANDEN / FEHLGESCHLAGEN / OFFEN / NICHT IM UMFANG. Gerät/Umgebung im
 
 **Minute 1 — Bewegung/Facing:** Kreis und Diagonalen. Auf Touch/Controller loslassen und angreifen: Richtung bleibt. Desktop seitlich laufen und mit Maus unabhängig drehen.
 
-**Minute 2 — Hammer:** Einzelangriff und gehaltenes Attack. Sichtbarer Swing muss mit Trefferbereich zusammenpassen. Dummy vor/seitlich/hinten vergleichen. Kein Gegner-Snap.
+**Minute 2 — Hammer:** Einzelangriff und gehaltenes Attack. Sichtbarer Swing muss mit Trefferbereich zusammenpassen. Dummy vor/seitlich/hinten vergleichen. Kein Gegner-Snap. Attack halten und dabei Stick/Maus durch 360° führen sowie hart umlenken: Bewegung bleibt frei, Körper folgt ohne Sprünge, jeder Swing geht in die beim Zuschlagen (ACTIVE) aktuelle Richtung.
 
 **Minute 3 — Knockback/Kante:** Dummy mehrfach zur offenen Kante schlagen und herunterbefördern. Player selbst über Kante laufen. Danach einmal über Kante dodgen. Kein unsichtbarer Rand; Reset genau einmal.
 
@@ -19,6 +19,16 @@ Drei Kernfragen:
 1. Ist die Richtung vorhersehbar?
 2. Fühlt sich der Hammer schwer und kontrollierbar an?
 3. Sind offene Kanten lesbar, ohne unfair zu wirken?
+
+## M2A-Kampfbegegnung (Controller-Spieltest)
+
+1. Start: Kampfmodus. Scrapling nähert sich; Ausholen, Markierung (erst Umriss, nach der Festlegung wachsende Füllung) und Hieb lesbar?
+2. Nach der Festlegung seitlich ausweichen (laufen oder Dodge): Der Hieb dreht nicht nach. Dodge genau im Hieb: kein Schaden, kein Rückstoß.
+3. Treffer einstecken: HP sinkt, kurzer Rückstoß, danach sofort wieder steuerbar. Körperkontakt allein macht keinen Schaden.
+4. Zurückschlagen während seiner Erholung; ihn einmal per HP und einmal über die Kante besiegen. Sieg-Anzeige → Neustart.
+5. Sterben lassen → Niederlage → Neustart; einmal selbst herunterfallen (Begegnung startet neu). Pause → Moduswechsel Training/Kampf mit gehaltenem RT: nichts bleibt hängen.
+
+Kernfragen: Ist der Angriff rechtzeitig lesbar? Fühlt sich Ausweichen fair an? Ist Dauerschlagen zu stark?
 
 ## Automatisierbare M1-Regeln
 

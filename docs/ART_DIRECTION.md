@@ -39,7 +39,7 @@ Scrap-Golem:
 - wenige robuste Metallplatten,
 - leuchtende Augen,
 - optional kleiner Stoff-/Schal-Akzent,
-- übergroße separate Werkzeugwaffe.
+- übergroße separate Werkzeugwaffe; der große Hammer ist als **vorläufige Zweihandwaffe** für den Art-Meilenstein vorgesehen (Placeholder bis dahin einhändig, Gameplay davon unabhängig).
 
 Keine hunderten Schrauben, Kabel oder photorealistischen Verschleißdetails. Silhouette schlägt Mikrodetail.
 

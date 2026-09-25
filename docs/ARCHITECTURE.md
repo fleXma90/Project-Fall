@@ -81,7 +81,7 @@ WeaponController besitzt Timing und Swing-ID. Ein 3D-Sektor kann als zeitlich ak
 
 - begrenzte Reichweite,
 - begrenzter Winkel,
-- während des Swings fixierte Richtung,
+- Richtung folgt im Windup der Körperausrichtung und ist ab der aktiven Phase fixiert,
 - ein Treffer je Ziel/Swing,
 - Visual und Hitfenster zeitlich plausibel synchron,
 - kein Ziel-Snap.
@@ -133,6 +133,23 @@ docs/
 ```
 
 Keine leeren Manager für spätere Features anlegen. Verzeichnisse dürfen angepasst werden.
+
+## Kampfbegegnung M2A
+
+Die Arena (`scenes/levels/training_arena.tscn`, `TrainingArena`) hat zwei Modi auf derselben Geometrie: COMBAT (Standard) und TRAINING. `restart()` setzt den aktuellen Modus vollständig zurück: Startpositionen, HP, Zustände, Timer, Trefferlisten, Effekte (`Effects`-Knoten) und gehaltene Eingaben. `Main` zeigt nach Sieg/Niederlage die Ergebnisanzeige (`EncounterOverlay`) und pausiert dahinter.
+
+```text
+Scrapling (CharacterBody3D, scrapling.gd)   # HP, KI-Zustände, Knockback, Bodenprüfung
+├─ CollisionShape3D
+├─ VisualRoot
+│  └─ PlaceholderScrapling (ScraplingVisual)  # austauschbar
+├─ WeaponController (+ WeaponMount / Cleaver-Szene)  # wiederverwendet, eigene WeaponData
+├─ AttackOrigin
+├─ SwingTrail (VFX)
+└─ AttackTelegraph (VFX, Bodenmarkierung)
+```
+
+Treffer laufen über `receive_hit(hit: HitInfo) -> bool` (Player, Dummy, Scrapling). Keine gemeinsame Actor-Basisklasse, kein KI-Framework; Werte in `resources/tuning/scrapling_tuning.tres` und `resources/weapons/scrapling_cleaver.tres`.
 
 ## Produktionsasset-Integration später
 

@@ -3,9 +3,9 @@ extends Resource
 ## Gameplaydaten einer Waffe. Reichweite/Winkel werden nie aus der Meshgröße abgeleitet.
 
 @export var display_name: String = "Hammer"
-@export var windup: float = 0.14
-@export var active: float = 0.10
-@export var recovery: float = 0.28
+@export var windup: float = 0.26
+@export var active: float = 0.12
+@export var recovery: float = 0.42
 @export var damage: float = 20.0
 ## Reichweite in Metern vom AttackOrigin (XZ, bis zur Zieloberfläche).
 @export var attack_range: float = 1.9

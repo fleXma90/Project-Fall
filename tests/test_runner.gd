@@ -42,6 +42,24 @@ func _ready() -> void:
 		"test_f3_dummy_edge_kill_once",
 		"test_f3_dummy_hp_kill_once",
 		"test_a1_visual_swap",
+		"test_m11_movement_identical_with_attack_held",
+		"test_m11_body_follows_stick_while_attack_held",
+		"test_m11_direction_rule_windup_active_recovery",
+		"test_m11_visual_swing_crosses_sector_sideways",
+		"test_e1_approach_and_attack_cycle",
+		"test_e2_no_contact_damage_only_active",
+		"test_e3_one_hit_per_enemy_attack",
+		"test_e4_no_retarget_after_commit",
+		"test_e5_enemy_range_angle_height",
+		"test_e6_dodge_iframes_block_damage_and_knockback",
+		"test_e7_valid_hit_hp_and_knockback",
+		"test_e8_interrupted_attacks_never_hit_late",
+		"test_e9_enemy_defeat_once_hp_and_fall",
+		"test_e10_edge_probe_stops_chase_only",
+		"test_e11_player_death_and_clean_restart",
+		"test_e12_player_fall_resets_encounter",
+		"test_e13_mode_switch_and_pause_release_inputs",
+		"test_e14_probe_held_attack_pressure",
 	]
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--only="):
@@ -49,7 +67,8 @@ func _ready() -> void:
 	for test_name in tests:
 		_current = test_name
 		var before := _failures.size()
-		await _setup()
+		# M1/M1.1-Regressionen laufen im Trainingsmodus, M2A-Tests (test_e…) im Kampfmodus.
+		await _setup(TrainingArena.Mode.COMBAT if test_name.begins_with("test_e") else TrainingArena.Mode.TRAINING)
 		await Callable(self, test_name).call()
 		await _teardown()
 		print("%s  %s" % ["PASS" if _failures.size() == before else "FAIL", test_name])
@@ -73,7 +92,7 @@ func _ticks(count: int) -> void:
 		await get_tree().physics_frame
 
 
-func _setup() -> void:
+func _setup(mode: TrainingArena.Mode) -> void:
 	get_tree().paused = false
 	InputRouter.set_touch_test_mode(false)
 	InputRouter._switch_source(InputRouter.Source.KEYBOARD_MOUSE)
@@ -82,6 +101,7 @@ func _setup() -> void:
 	for action in ["move_up", "move_down", "move_left", "move_right"]:
 		Input.action_release(action)
 	main = MAIN_SCENE.instantiate()
+	main.set("start_mode", mode)
 	add_child(main)
 	player = main.get("player")
 	arena = main.get("arena")
@@ -258,8 +278,8 @@ func test_i2_controller_attack_keeps_released_direction() -> void:
 	await _ticks(3)
 	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 0.0)
 	await _ticks(30)
-	_check(player.attack_direction.distance_to(facing) < 0.001, "Attack-Richtung weicht vom Facing ab")
-	_check(player.weapon.direction.distance_to(facing) < 0.001, "Swing-Richtung magnetisiert")
+	_check(rad_to_deg(player.attack_direction.angle_to(facing)) < 1.0, "Attack-Richtung weicht vom Facing ab")
+	_check(rad_to_deg(player.weapon.direction.angle_to(facing)) < 1.0, "Swing-Richtung magnetisiert")
 	_check(is_equal_approx(d.hp, d.max_hp), "Dummy außerhalb der Schlagrichtung getroffen")
 
 
@@ -275,7 +295,9 @@ func test_i3_held_attack_full_cycle() -> void:
 		await _ticks(1)
 	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 0.0)
 	var total := player.weapon.data.total_duration()
-	_check(starts.size() == 4, "Gehaltenes RT: %d statt 4 Swings in 2 s" % starts.size())
+	# Vollständige Zyklen in 2 s bei gehaltenem RT (0,80 s → Starts bei 0 / 0,8 / 1,6 s).
+	var expected := int(floor(119.0 / (total * 60.0))) + 1
+	_check(starts.size() == expected, "Gehaltenes RT: %d statt %d Swings in 2 s" % [starts.size(), expected])
 	for i in range(1, starts.size()):
 		var interval := (starts[i] - starts[i - 1]) * DT
 		_check(interval >= total - 0.0001, "Swing-Abstand %.3f s < voller Zyklus %.2f s" % [interval, total])
@@ -397,7 +419,7 @@ func test_i6_pause_focus_disconnect_release() -> void:
 	_mouse_button(MOUSE_BUTTON_LEFT, true, Vector2(640, 400))
 	await _ticks(1)
 	_check(InputRouter.attack_held, "LMB gehalten nicht erkannt")
-	arena.reset_training()
+	arena.restart()
 	await _ticks(1)
 	_check(not InputRouter.attack_held, "Reset löst Held-Input nicht")
 	_mouse_button(MOUSE_BUTTON_LEFT, false, Vector2(640, 400))
@@ -489,7 +511,7 @@ func test_desktop_strafe_and_fixed_attack_direction() -> void:
 	_check(move_dir.distance_to(screen_left) < 0.05, "A bewegt nicht bildschirm-links")
 	_check(player.facing_direction.dot(Vector3.RIGHT) > 0.9, "Facing folgt beim Strafen nicht der Maus")
 	_check(move_dir.dot(player.facing_direction) < -0.5, "Bewegung und Facing nicht unabhängig")
-	# Schlag Richtung Dummy starten, dann Maus nach hinten: Richtung bleibt fixiert.
+	# Schlag Richtung Dummy; sobald ACTIVE läuft, Maus nach hinten: Sektor bleibt fixiert.
 	_place_player(Vector3(0, 0.05, 0), Vector3.RIGHT)
 	await _ticks(40)
 	_mouse_move_to(camera.unproject_position(Vector3(4, 0, 0)))
@@ -498,9 +520,11 @@ func test_desktop_strafe_and_fixed_attack_direction() -> void:
 	_mouse_button(MOUSE_BUTTON_LEFT, true, mouse_screen)
 	await _ticks(2)
 	_mouse_button(MOUSE_BUTTON_LEFT, false, mouse_screen)
+	while player.weapon.phase != WeaponController.Phase.ACTIVE:
+		await _ticks(1)
 	_mouse_move_to(camera.unproject_position(Vector3(-4, 0, 0)))
 	await _ticks(30)
-	_check(player.weapon.direction.distance_to(Vector3.RIGHT) < 0.02, "Swing-Richtung folgt Maus während des Schlags")
+	_check(player.weapon.direction.distance_to(Vector3.RIGHT) < 0.02, "Swing-Richtung folgt Maus während ACTIVE")
 	_check(is_equal_approx(d.hp, d.max_hp - player.weapon.data.damage), "Dummy in fixierter Richtung nicht getroffen (HP %.0f)" % d.hp)
 
 
@@ -732,7 +756,7 @@ func test_f3_dummy_hp_kill_once() -> void:
 	_place_player(Vector3(-4.0, 0.05, 0), Vector3.RIGHT)
 	_set_stick(_stick_for_world(Vector3.RIGHT) * 0.6)
 	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0)
-	for i in 240:
+	for i in 360:
 		await _ticks(1)
 		if d.is_defeated:
 			break
@@ -778,3 +802,643 @@ func test_a1_visual_swap() -> void:
 	await _ticks(20)
 	Input.action_release("move_right")
 	_check(Vector2(player.velocity.x, player.velocity.z).length() > 1.0, "Bewegung ohne Visual-Adapter defekt")
+
+
+# --- M1.1: Dauerattacke --------------------------------------------------------
+
+## Stickskript: eine volle 360°-Umdrehung in 1,5 s, danach harte Richtungswechsel alle 0,25 s.
+## Liefert Joy-Achsen (x rechts, y unten) für Tick i.
+func _sweep_stick(i: int) -> Vector2:
+	if i < 90:
+		var angle := TAU * i / 90.0
+		return Vector2(cos(angle), -sin(angle))
+	var reversals: Array[Vector2] = [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]
+	return reversals[((i - 90) / 15) % reversals.size()]
+
+
+const SWEEP_TICKS: int = 150
+
+
+func _body_forward() -> Vector3:
+	var f := -player.global_basis.z
+	return Vector3(f.x, 0, f.z).normalized()
+
+
+func _record_sweep(hold_attack: bool) -> Array[Vector2]:
+	_place_player(Vector3(0, 0, 0), Vector3.FORWARD)
+	await _ticks(10)
+	var velocities: Array[Vector2] = []
+	if hold_attack:
+		_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	for i in SWEEP_TICKS:
+		_set_stick(_sweep_stick(i))
+		await _ticks(1)
+		velocities.append(Vector2(player.velocity.x, player.velocity.z))
+	_set_stick(Vector2.ZERO)
+	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	await _ticks(60)
+	return velocities
+
+
+func test_m11_movement_identical_with_attack_held() -> void:
+	_only_dummy(Vector3(5.5, 0.02, 4))
+	_gamepad_mode()
+	var free: Array[Vector2] = await _record_sweep(false)
+	var held: Array[Vector2] = await _record_sweep(true)
+	var worst := 0.0
+	for i in SWEEP_TICKS:
+		worst = maxf(worst, free[i].distance_to(held[i]))
+	print("    Max. Geschwindigkeitsabweichung mit/ohne gehaltenes RT: %.3f m/s" % worst)
+	_check(worst < 0.05, "Bewegung bei gehaltenem RT weicht um %.2f m/s ab" % worst)
+
+
+func test_m11_body_follows_stick_while_attack_held() -> void:
+	_only_dummy(Vector3(5.5, 0.02, 4))
+	_gamepad_mode()
+	_place_player(Vector3(0, 0, 0), Vector3.FORWARD)
+	await _ticks(10)
+	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	var last_yaw := player.rotation.y
+	var max_step := 0.0
+	var diff_sum := 0.0
+	var diff_count := 0
+	var attack_ticks := 0
+	for i in 90:  # nur die kontinuierliche Umdrehung
+		_set_stick(_sweep_stick(i))
+		await _ticks(1)
+		max_step = maxf(max_step, absf(rad_to_deg(angle_difference(last_yaw, player.rotation.y))))
+		last_yaw = player.rotation.y
+		if player.state == PlayerController.State.ATTACK:
+			attack_ticks += 1
+		if player.weapon.phase != WeaponController.Phase.ACTIVE:
+			diff_sum += rad_to_deg(_body_forward().angle_to(player.facing_direction))
+			diff_count += 1
+	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	_set_stick(Vector2.ZERO)
+	var mean_diff := diff_sum / maxf(diff_count, 1)
+	print("    Angriff aktiv in %d/90 Ticks, max. Körperdrehung/Tick %.1f°, mittl. Körper↔Facing außerhalb ACTIVE %.1f°" % [attack_ticks, max_step, mean_diff])
+	_check(attack_ticks > 60, "Gehaltenes RT hält den Angriff nicht dauerhaft aktiv")
+	_check(max_step < 20.0, "Körper springt um %.1f° in einem Tick" % max_step)
+	_check(mean_diff < 20.0, "Körper folgt dem Stick nicht (mittl. %.1f°)" % mean_diff)
+
+
+func test_m11_direction_rule_windup_active_recovery() -> void:
+	var dummies := arena.dummies.duplicate()
+	_gamepad_mode()
+	_place_player(Vector3(0, 0, 0), Vector3.RIGHT)
+	await _ticks(20)
+	# Ziel vorne (Welt -Z), seitlich (+X, bisherige Richtung) und hinten (+Z).
+	_move_dummy(dummies[0], Vector3(0, 0.02, -2.2))
+	_move_dummy(dummies[1], Vector3(1.4, 0.02, 0))
+	_move_dummy(dummies[2], Vector3(0, 0.02, 2.4))
+	await _ticks(2)
+	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _ticks(2)
+	_check(player.weapon.phase == WeaponController.Phase.WINDUP, "Angriff nicht im WINDUP")
+	# Während WINDUP auf Welt -Z umlenken: bevorstehende Schlagrichtung folgt.
+	_set_stick(_stick_for_world(Vector3.FORWARD) * 0.5)
+	while player.weapon.phase == WeaponController.Phase.WINDUP:
+		await _ticks(1)
+	var fixed := player.weapon.direction
+	_check(rad_to_deg(fixed.angle_to(Vector3.FORWARD)) < 5.0, "WINDUP-Umlenkung nicht übernommen (%.1f°)" % rad_to_deg(fixed.angle_to(Vector3.FORWARD)))
+	_check(rad_to_deg(_body_forward().angle_to(fixed)) < 0.5, "Körper und Treffersektor weichen bei ACTIVE-Beginn ab")
+	# Während ACTIVE nach hinten lenken: Sektor, Körper und Trail bleiben fixiert, Position bewegt sich.
+	_set_stick(_stick_for_world(Vector3.BACK) * 0.5)
+	var start_velocity_z := player.velocity.z
+	var trail: SwingTrail = player.get_node("SwingTrail")
+	while player.weapon.phase == WeaponController.Phase.ACTIVE:
+		await _ticks(1)
+		_check(player.weapon.direction.distance_to(fixed) < 0.0001, "Treffersektor dreht während ACTIVE")
+		_check(rad_to_deg(_body_forward().angle_to(fixed)) < 0.5, "Körper dreht während ACTIVE")
+		var trail_forward := -trail.global_basis.z
+		_check(rad_to_deg(Vector3(trail_forward.x, 0, trail_forward.z).angle_to(fixed)) < 0.5, "Trail weicht vom Sektor ab")
+	# Bewegung folgt dem neuen Input (+Z) auch während ACTIVE.
+	_check(player.velocity.z - start_velocity_z > 1.5, "Bewegung folgt Input während ACTIVE nicht (Δvz %.2f)" % (player.velocity.z - start_velocity_z))
+	_check(dummies[0].hp < dummies[0].max_hp, "Ziel in fixierter Richtung nicht getroffen")
+	_check(is_equal_approx(dummies[1].hp, dummies[1].max_hp), "Ziel in alter Startrichtung getroffen")
+	_check(is_equal_approx(dummies[2].hp, dummies[2].max_hp), "Ziel hinten getroffen")
+	# RECOVERY: freie Ausrichtung, keine weiteren Treffer.
+	_check(player.weapon.phase == WeaponController.Phase.RECOVERY, "Nach ACTIVE keine RECOVERY")
+	var hp_before: Array[float] = [dummies[0].hp, dummies[1].hp, dummies[2].hp]
+	var recovery_ticks := 0
+	while player.weapon.phase == WeaponController.Phase.RECOVERY and recovery_ticks < 12:
+		await _ticks(1)
+		recovery_ticks += 1
+	_check(rad_to_deg(_body_forward().angle_to(Vector3.BACK)) < 15.0, "Körper dreht in RECOVERY nicht frei (%.1f°)" % rad_to_deg(_body_forward().angle_to(Vector3.BACK)))
+	# Nächster gehaltener Swing nutzt die neueste Richtung.
+	while player.weapon.phase != WeaponController.Phase.ACTIVE:
+		await _ticks(1)
+	_check(rad_to_deg(player.weapon.direction.angle_to(Vector3.BACK)) < 5.0, "Nächster Swing nutzt nicht die neueste Richtung")
+	_check(dummies[0].hp == hp_before[0], "Treffer außerhalb von ACTIVE")
+	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	_set_stick(Vector2.ZERO)
+	await _ticks(20)
+	_check(dummies[2].hp < dummies[2].max_hp, "Zweiter Swing trifft Ziel in neuer Richtung nicht")
+
+
+## Placeholder-Adapter: Der Hammerkopf läuft während ACTIVE von rechts nach links durch den Sektor
+## und bleibt dabei überwiegend seitlich (keine vertikale Hackbewegung).
+func test_m11_visual_swing_crosses_sector_sideways() -> void:
+	_only_dummy(Vector3(5.5, 0.02, 4))
+	_gamepad_mode()
+	_place_player(Vector3(0, 0, 0), Vector3.RIGHT)
+	await _ticks(20)
+	await _single_rt_attack()
+	var samples: Array[float] = []
+	var max_vertical := 0.0
+	while player.weapon.phase != WeaponController.Phase.RECOVERY:
+		await _ticks(1)
+		if player.weapon.phase == WeaponController.Phase.ACTIVE:
+			await get_tree().process_frame  # Visual/Mount werden in _process aktualisiert
+			var head := -player.weapon.mount.global_basis.z
+			var flat := Vector3(head.x, 0, head.z).normalized()
+			samples.append(-rad_to_deg(player.weapon.direction.signed_angle_to(flat, Vector3.UP)))
+			max_vertical = maxf(max_vertical, absf(head.y))
+	print("    Hammer-Gier in ACTIVE (rechts +): %s, max. |vertikal| %.2f" % [samples.map(func(a: float) -> String: return "%.0f" % a), max_vertical])
+	_check(samples.size() >= 5, "Zu wenige ACTIVE-Samples")
+	if samples.size() >= 2:
+		_check(samples[0] > 20.0 and samples[samples.size() - 1] < -20.0, "Hammer überstreicht den Sektor nicht von rechts nach links")
+	_check(max_vertical < 0.75, "Schlag überwiegend vertikal (|y| %.2f)" % max_vertical)
+
+
+
+# --- M2A: Kampfbegegnung (Kampfmodus) ---------------------------------------------
+
+## Gegner an Position mit Blickrichtung. Ohne Ziel bleibt die KI IDLE (für geometrische Regeltests).
+func _place_enemy(pos: Vector3, facing: Vector3, with_target: bool) -> Scrapling:
+	var e := arena.enemy
+	e.weapon.cancel()
+	e.target = player if with_target else null
+	e.state = Scrapling.State.IDLE
+	e.global_position = Vector3(pos.x, 0.0, pos.z)
+	e.velocity = Vector3.ZERO
+	e.rotation.y = PlayerController.yaw_for_direction(facing.normalized())
+	return e
+
+
+## Gezielter Angriff in fester Richtung (ohne Ziel keine Nachführung); wartet bis ACTIVE beginnt.
+func _enemy_attack_until_active(e: Scrapling) -> void:
+	e.start_attack()
+	while e.weapon.phase == WeaponController.Phase.WINDUP:
+		await _ticks(1)
+
+
+func _await_enemy_weapon_idle(e: Scrapling) -> void:
+	while e.weapon.is_busy():
+		await _ticks(1)
+
+
+func _enemy_label(e: Scrapling) -> String:
+	if e.state == Scrapling.State.ATTACK:
+		return WeaponController.Phase.keys()[e.weapon.phase]
+	return Scrapling.State.keys()[e.state]
+
+
+func test_e1_approach_and_attack_cycle() -> void:
+	var e := _place_enemy(Vector3(3, 0, 0), Vector3.LEFT, true)
+	_place_player(Vector3(-2, 0, 0), Vector3.RIGHT)
+	var start_distance := e.global_position.distance_to(player.global_position)
+	var sequence: Array[String] = []
+	var ticks_in: Dictionary = {}
+	var distance_at_windup := -1.0
+	var attack_position := Vector3.ZERO
+	var drift := 0.0
+	for i in 300:
+		await _ticks(1)
+		var label := _enemy_label(e)
+		if sequence.is_empty() or sequence[sequence.size() - 1] != label:
+			sequence.append(label)
+			if label == "WINDUP":
+				distance_at_windup = e.global_position.distance_to(player.global_position)
+		ticks_in[label] = int(ticks_in.get(label, 0)) + 1
+		# Ab der Richtungsfestlegung: kein Verfolgen (Auslaufen aus dem Lauf davor ist erlaubt).
+		if e.is_committed():
+			if attack_position == Vector3.ZERO:
+				attack_position = e.global_position
+			drift = maxf(drift, e.global_position.distance_to(attack_position))
+		else:
+			attack_position = Vector3.ZERO
+		if sequence.size() >= 2 and sequence[sequence.size() - 2] == "RECOVERY":
+			break
+	print("    Ablauf: %s · Ticks WINDUP %d / ACTIVE %d / RECOVERY %d" % [" → ".join(sequence),
+			ticks_in.get("WINDUP", 0), ticks_in.get("ACTIVE", 0), ticks_in.get("RECOVERY", 0)])
+	var joined := " ".join(sequence)
+	_check(joined.contains("CHASE WINDUP ACTIVE RECOVERY"), "Ablauf Annäherung → Windup → Active → Recovery fehlt: %s" % joined)
+	_check(start_distance > 4.0 and distance_at_windup <= e.tuning.attack_start_distance + 0.05, "Angriff nicht erst in Reichweite (%.2f m)" % distance_at_windup)
+	var data := e.weapon.data
+	_check(absi(int(ticks_in.get("WINDUP", 0)) - roundi(data.windup * 60)) <= 1, "Windup-Dauer weicht ab")
+	_check(absi(int(ticks_in.get("ACTIVE", 0)) - roundi(data.active * 60)) <= 1, "Active-Dauer weicht ab")
+	_check(absi(int(ticks_in.get("RECOVERY", 0)) - roundi(data.recovery * 60)) <= 1, "Recovery-Dauer weicht ab")
+	_check(drift < 0.03, "Gegner bewegt sich nach der Festlegung (%.2f m)" % drift)
+
+
+func test_e2_no_contact_damage_only_active() -> void:
+	# Reiner Körperkontakt: Spieler drückt 1,5 s gegen den Gegner (KI ohne Ziel).
+	var e := _place_enemy(Vector3(2.0, 0, 0), Vector3.LEFT, false)
+	_gamepad_mode()
+	_place_player(Vector3(-0.5, 0, 0), Vector3.RIGHT)
+	_set_stick(_stick_for_world(Vector3.RIGHT))
+	await _ticks(90)
+	_check(player.global_position.distance_to(e.global_position) < 0.85, "Kein Körperkontakt hergestellt")
+	_check(is_equal_approx(player.hp, player.tuning.max_hp), "Körperkontakt verursacht Schaden")
+	# Mit aktiver KI 5 s im Nahkampf bleiben: Schaden ausschließlich während ACTIVE.
+	var events: Array = []
+	player.damaged.connect(func(hit: HitInfo) -> void: events.append([e.weapon.phase, hit.swing_id]))
+	e.target = player
+	for i in 300:
+		var to := e.global_position - player.global_position
+		to.y = 0
+		_set_stick(_stick_for_world(to.normalized()) * 0.5 if to.length() > 0.9 else Vector2.ZERO)
+		await _ticks(1)
+		if player.state == PlayerController.State.DEAD:
+			break
+	_set_stick(Vector2.ZERO)
+	_check(events.size() >= 2, "Zu wenige Gegnertreffer für die Prüfung (%d)" % events.size())
+	var swing_ids := {}
+	for ev: Array in events:
+		_check(ev[0] == WeaponController.Phase.ACTIVE, "Schaden außerhalb von ACTIVE (Phase %s)" % WeaponController.Phase.keys()[ev[0]])
+		swing_ids[ev[1]] = true
+	_check(swing_ids.size() == events.size(), "Mehr als ein Treffer pro gegnerischem Angriff")
+
+
+func test_e3_one_hit_per_enemy_attack() -> void:
+	var e := _place_enemy(Vector3(0, 0, 0), Vector3.FORWARD, false)
+	_place_player(Vector3(0, 0, -1.0), Vector3.BACK)
+	await _ticks(2)
+	var count := [0]
+	player.damaged.connect(func(_hit: HitInfo) -> void: count[0] += 1)
+	await _enemy_attack_until_active(e)
+	# Spieler während des gesamten Trefferfensters im Sektor halten.
+	while e.weapon.phase == WeaponController.Phase.ACTIVE:
+		player.global_position = Vector3(0, 0, -1.0)
+		await _ticks(1)
+	await _await_enemy_weapon_idle(e)
+	_check(count[0] == 1, "Ein gegnerischer Angriff trifft %d-mal" % count[0])
+	_check(is_equal_approx(player.hp, player.tuning.max_hp - e.weapon.data.damage), "HP nach einem Treffer: %.0f" % player.hp)
+
+
+func test_e4_no_retarget_after_commit() -> void:
+	var e := _place_enemy(Vector3(1.3, 0, 0), Vector3.LEFT, true)
+	_place_player(Vector3(0, 0, 0), Vector3.RIGHT)
+	while e.state != Scrapling.State.ATTACK:
+		await _ticks(1)
+	var initial := e.weapon.direction
+	# Vor der Festlegung seitlich versetzen: Richtung folgt noch.
+	player.global_position = Vector3(0.5, 0, 0.9)
+	while not e.is_committed():
+		await _ticks(1)
+	var committed := e.weapon.direction
+	_check(rad_to_deg(committed.angle_to(initial)) > 10.0, "Windup verfolgt vor der Festlegung nicht (%.1f°)" % rad_to_deg(committed.angle_to(initial)))
+	var yaw := e.rotation.y
+	# Nach der Festlegung auf die andere Seite ausweichen: kein Nachdrehen, kein Verfolgen.
+	var dodge_position := Vector3(0.5, 0, -0.9)
+	player.global_position = dodge_position
+	var position := e.global_position
+	var expect_hit := WeaponController.is_in_sector(e.weapon.attack_origin.global_position, committed, dodge_position,
+			player.hit_radius, e.weapon.data.attack_range, e.weapon.data.arc_degrees, e.weapon.data.max_height_difference)
+	_check(not expect_hit, "Testaufbau: Ausweichposition liegt im festgelegten Sektor")
+	while e.weapon.phase != WeaponController.Phase.RECOVERY:
+		await _ticks(1)
+		_check(e.weapon.direction.distance_to(committed) < 0.0001, "Gegnerischer Sektor dreht nach der Festlegung")
+		_check(absf(angle_difference(e.rotation.y, yaw)) < 0.001, "Gegner dreht nach der Festlegung")
+	_check(e.global_position.distance_to(position) < 0.02, "Gegner verfolgt während des Schlags")
+	_check(is_equal_approx(player.hp, player.tuning.max_hp), "Ausgewichener Spieler dennoch getroffen")
+
+
+## Führt einen festen Gegnerangriff (Gegner im Ursprung, Blick -Z) gegen einen Spieler an offset aus.
+func _enemy_hits_player_at(offset: Vector3, height_at_active: float = 0.0) -> bool:
+	var e := _place_enemy(Vector3.ZERO, Vector3.FORWARD, false)
+	_place_player(offset, Vector3.BACK)
+	player.hp = player.tuning.max_hp
+	await _ticks(3)
+	e.start_attack()
+	# Der Gegner verarbeitet vor dem Spieler und prüft schon im Übergangstick: einen Tick vorher anheben.
+	while e.weapon.phase == WeaponController.Phase.WINDUP and (1.0 - e.weapon.phase_progress()) * e.weapon.data.windup > 1.5 * DT:
+		await _ticks(1)
+	if height_at_active > 0.0:
+		player.global_position = Vector3(offset.x, height_at_active, offset.z)
+		player.velocity = Vector3.ZERO
+	while e.weapon.phase == WeaponController.Phase.WINDUP:
+		await _ticks(1)
+	while e.weapon.phase == WeaponController.Phase.ACTIVE:
+		await _ticks(1)
+	var hit := player.hp < player.tuning.max_hp
+	await _await_enemy_weapon_idle(e)
+	await _ticks(40)
+	return hit
+
+
+func test_e5_enemy_range_angle_height() -> void:
+	var data: WeaponData = arena.enemy.weapon.data
+	var r := player.hit_radius
+	var o := Vector3(0, 0.6, 0)
+	var f := Vector3.FORWARD
+	_check(WeaponController.is_in_sector(o, f, Vector3(0, 0, -1.5), r, data.attack_range, data.arc_degrees, data.max_height_difference), "Reichweite: 1,5 m nicht im Sektor")
+	_check(not WeaponController.is_in_sector(o, f, Vector3(0, 0, -1.7), r, data.attack_range, data.arc_degrees, data.max_height_difference), "Reichweite: 1,7 m im Sektor")
+	_check(not WeaponController.is_in_sector(o, f, Vector3(1.0, 0, 0), r, data.attack_range, data.arc_degrees, data.max_height_difference), "90°-Seite im Sektor")
+	_check(not WeaponController.is_in_sector(o, f, Vector3(0, 2.0, -1.0), r, data.attack_range, data.arc_degrees, data.max_height_difference), "Höhenunterschied im Sektor")
+	var cases: Array = [
+		[Vector3(0, 0, -1.4), 0.0, true, "vorne innerhalb"],
+		[Vector3(0.866, 0, -0.5), 0.0, true, "60° innerhalb"],
+		[Vector3(0, 0, -1.75), 0.0, false, "vorne zu weit"],
+		[Vector3(1.0, 0, 0), 0.0, false, "90° seitlich"],
+		[Vector3(0, 0, 1.0), 0.0, false, "hinten"],
+		[Vector3(0, 0, -1.0), 2.2, false, "zu hoch (in der Luft)"],
+	]
+	for c: Array in cases:
+		var hit: bool = await _enemy_hits_player_at(c[0], c[1])
+		_check(hit == c[2], "Gegnertreffer %s: %s (erwartet %s)" % [c[3], hit, c[2]])
+
+
+func test_e6_dodge_iframes_block_damage_and_knockback() -> void:
+	var e := _place_enemy(Vector3.ZERO, Vector3.FORWARD, false)
+	_gamepad_mode()
+	# Dodge auf der Stelle (nur für diesen Test), damit ausschließlich die iFrames wirken.
+	player.tuning = player.tuning.duplicate()
+	player.tuning.dodge_speed = 0.0
+	_place_player(Vector3(0, 0, -1.0), Vector3.BACK)
+	await _ticks(3)
+	var evaded_speed: Array[float] = []
+	var damage_elapsed: Array[float] = []
+	player.hit_evaded.connect(func(_hit: HitInfo) -> void: evaded_speed.append(Vector2(player.velocity.x, player.velocity.z).length()))
+	player.damaged.connect(func(_hit: HitInfo) -> void: damage_elapsed.append(player._dodge_elapsed))
+	e.start_attack()
+	while e.weapon.phase == WeaponController.Phase.WINDUP and (1.0 - e.weapon.phase_progress()) * e.weapon.data.windup > 5.0 * DT:
+		await _ticks(1)
+	_joy_axis(JOY_AXIS_TRIGGER_LEFT, 1.0)
+	await _ticks(2)
+	_joy_axis(JOY_AXIS_TRIGGER_LEFT, 0.0)
+	var hp_during_iframes := player.hp
+	while e.weapon.phase != WeaponController.Phase.RECOVERY and e.weapon.is_busy():
+		await _ticks(1)
+		if player.is_invulnerable():
+			_check(player.hp == hp_during_iframes, "Schaden während der iFrames")
+	print("    Abgewehrte Trefferprüfungen: %d, Treffer nach iFrames bei Dodge-Zeit %s" % [evaded_speed.size(), damage_elapsed])
+	_check(evaded_speed.size() >= 1, "iFrames haben keinen Treffer abgewehrt")
+	for speed in evaded_speed:
+		_check(speed < 0.01, "Knockback trotz iFrames")
+	for elapsed in damage_elapsed:
+		_check(elapsed > player.tuning.dodge_iframe_end or elapsed < player.tuning.dodge_iframe_start, "Treffer innerhalb des iFrame-Fensters")
+	# Vergleich ohne Dodge in gleicher Lage: normaler Treffer.
+	await _await_enemy_weapon_idle(e)
+	await _ticks(20)
+	var hit: bool = await _enemy_hits_player_at(Vector3(0, 0, -1.0))
+	_check(hit, "Ohne Dodge kein Treffer (Vergleich)")
+
+
+func test_e7_valid_hit_hp_and_knockback() -> void:
+	var e := _place_enemy(Vector3.ZERO, Vector3.FORWARD, false)
+	_gamepad_mode()
+	_place_player(Vector3(0, 0, -1.0), Vector3.BACK)
+	await _ticks(3)
+	await _enemy_attack_until_active(e)
+	# Spieler drückt während des Treffers weiter zum Gegner (+Z).
+	_set_stick(_stick_for_world(Vector3.BACK))
+	while player.state != PlayerController.State.HIT and e.weapon.phase == WeaponController.Phase.ACTIVE:
+		await _ticks(1)
+	_check(player.state == PlayerController.State.HIT, "Kein Trefferzustand")
+	var start_z := player.global_position.z
+	var last := player.global_position
+	var max_step := 0.0
+	var hit_ticks := 0
+	while player.state == PlayerController.State.HIT:
+		await _ticks(1)
+		max_step = maxf(max_step, player.global_position.distance_to(last))
+		last = player.global_position
+		hit_ticks += 1
+	var pushed := start_z - player.global_position.z
+	print("    Spieler-Knockback: %.2f m in %d Ticks, max. %.3f m/Tick" % [pushed, hit_ticks, max_step])
+	_check(is_equal_approx(player.hp, player.tuning.max_hp - e.weapon.data.damage), "HP nicht um den Schaden reduziert")
+	_check(pushed > 0.3, "Knockback von Laufeingabe überschrieben (%.2f m)" % pushed)
+	_check(max_step <= e.weapon.data.knockback_speed / 60.0 * 1.05, "Knockback-Sprung (Teleport?)")
+	# Danach normale Steuerung: Spieler läuft wieder auf den Gegner zu (bis zum Körperkontakt).
+	var after_hit_z := player.global_position.z
+	await _ticks(20)
+	_check(player.state == PlayerController.State.MOVE and player.global_position.z - after_hit_z > 0.3, "Nach dem Treffer keine normale Steuerung")
+	_set_stick(Vector2.ZERO)
+
+
+func test_e8_interrupted_attacks_never_hit_late() -> void:
+	# a) Gegnerangriff im Windup durch Hammertreffer unterbrochen.
+	var e := _place_enemy(Vector3.ZERO, Vector3.FORWARD, false)
+	_place_player(Vector3(0, 0, -1.0), Vector3.BACK)
+	await _ticks(3)
+	e.start_attack()
+	while e.weapon.phase_progress() < 0.5:
+		await _ticks(1)
+	var hit := HitInfo.new()
+	hit.damage = 20.0
+	hit.knockback_velocity = Vector3(0, 0, 0.5)
+	hit.knockback_duration = 0.1
+	e.receive_hit(hit)
+	_check(not e.weapon.is_busy() and e.state == Scrapling.State.HIT, "Gegnerangriff nicht unterbrochen")
+	for i in 90:
+		player.global_position = Vector3(0, 0, -1.0)
+		await _ticks(1)
+	_check(is_equal_approx(player.hp, player.tuning.max_hp), "Unterbrochener Gegnerangriff trifft nachträglich")
+	# b) Eigener Angriff durch Gegnertreffer unterbrochen: kein Treffer, kein früherer Folgeangriff.
+	e = _place_enemy(Vector3.ZERO, Vector3.FORWARD, false)
+	e.hp = e.tuning.max_hp
+	_gamepad_mode()
+	_place_player(Vector3(0, 0, -1.2), Vector3.BACK)
+	await _ticks(3)
+	var starts: Array[int] = []
+	var tick := [0]
+	player.weapon.swing_started.connect(func(_id: int, _dir: Vector3) -> void: starts.append(tick[0]))
+	var enemy_hp_at_second_swing := [-1.0]
+	e.start_attack()
+	while (1.0 - e.weapon.phase_progress()) * e.weapon.data.windup > 0.1:
+		await _ticks(1)
+	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	for i in 72:
+		tick[0] = i
+		await _ticks(1)
+		if starts.size() == 2 and enemy_hp_at_second_swing[0] < 0.0:
+			enemy_hp_at_second_swing[0] = e.hp
+	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	_check(player.hp < player.tuning.max_hp, "Testaufbau: Spieler wurde nicht getroffen")
+	_check(starts.size() >= 2, "Kein Folgeangriff bei gehaltenem RT")
+	if starts.size() >= 2:
+		_check((starts[1] - starts[0]) * DT >= player.weapon.data.total_duration() - 0.0001, "Unterbrechung ermöglicht früheren Folgeangriff")
+		_check(is_equal_approx(enemy_hp_at_second_swing[0], e.tuning.max_hp), "Unterbrochener Spielerangriff hat nachträglich getroffen")
+
+
+func test_e9_enemy_defeat_once_hp_and_fall() -> void:
+	var finished: Array[bool] = []
+	arena.encounter_finished.connect(func(victory: bool) -> void: finished.append(victory))
+	var e := _place_enemy(Vector3(0, 0, -2), Vector3.BACK, false)
+	var hit := HitInfo.new()
+	hit.damage = 20.0
+	hit.knockback_duration = 0.01
+	for i in 4:
+		e.receive_hit(hit)
+		await _ticks(5)
+	_check(e.defeat_count == 1 and e.last_defeat_reason == Scrapling.DefeatReason.HP, "HP-Niederlage nicht genau einmal")
+	_check(finished == [true] and arena.encounter == TrainingArena.Encounter.VICTORY, "Sieg nicht genau einmal gemeldet")
+	_check(not e.receive_hit(hit), "Besiegter Gegner nimmt weitere Treffer")
+	e.global_position = Vector3(0, arena.kill_height - 1.0, -2)
+	await _ticks(2)
+	_check(e.defeat_count == 1 and finished.size() == 1, "Tödlich getroffener Gegner zählt beim Fall doppelt")
+	_check(not e.weapon.is_busy() and e.state == Scrapling.State.DEFEATED, "Besiegter Gegner handelt weiter")
+	# Neue Runde: Gegner an der Kante trotz Bodenprüfung per Hammer herunterschlagen.
+	arena.restart()
+	await _ticks(2)
+	e = _place_enemy(Vector3(5.9, 0, 0), Vector3.LEFT, true)
+	_gamepad_mode()
+	_place_player(Vector3(4.6, 0, 0), Vector3.RIGHT)
+	await _single_rt_attack()
+	for i in 150:
+		await _ticks(1)
+		if e.is_defeated:
+			break
+	_check(e.is_defeated and e.last_defeat_reason == Scrapling.DefeatReason.FALL, "Gegner nicht über die Kante besiegt")
+	_check(e.defeat_count == 1 and finished == [true, true], "Kanten-Niederlage nicht genau einmal (%s)" % [finished])
+
+
+func test_e10_edge_probe_stops_chase_only() -> void:
+	var e := _place_enemy(Vector3(3, 0, 0), Vector3.RIGHT, true)
+	# Spieler „schwebt“ eingefroren jenseits der Kante: Verfolgung darf nicht über den Rand führen.
+	player.process_mode = Node.PROCESS_MODE_DISABLED
+	player.global_position = Vector3(9.0, 0, 0)
+	for i in 240:
+		await _ticks(1)
+	player.process_mode = Node.PROCESS_MODE_INHERIT
+	print("    Gegner stoppt bei x = %.2f (Kante 6,5)" % e.global_position.x)
+	_check(e.global_position.x > 5.0 and e.global_position.x < 6.5, "Gegner nicht bis vor die Kante gelaufen (x %.2f)" % e.global_position.x)
+	_check(e.global_position.y > -0.05 and not e.is_defeated, "Gegner läuft bei Verfolgung über die Kante")
+	_check(e.state == Scrapling.State.CHASE, "Gegner verlässt die Verfolgung")
+
+
+func test_e11_player_death_and_clean_restart() -> void:
+	var e := arena.enemy
+	var overlay: EncounterOverlay = main.get("result_overlay")
+	var deaths := [0]
+	player.died.connect(func() -> void: deaths[0] += 1)
+	player.hp = 10.0
+	for i in 480:
+		await _ticks(1)
+		if player.state == PlayerController.State.DEAD:
+			break
+	_check(player.state == PlayerController.State.DEAD and deaths[0] == 1, "Spielertod nicht genau einmal")
+	_check(arena.encounter == TrainingArena.Encounter.DEFEAT, "Niederlage nicht gesetzt")
+	var attacked_after := false
+	for i in 40:
+		await _ticks(1)
+		attacked_after = attacked_after or e.state == Scrapling.State.ATTACK or player.state != PlayerController.State.DEAD
+	_check(not attacked_after and not e.weapon.is_busy(), "Kampf läuft nach Spielertod weiter")
+	await _ticks(40)
+	_check(overlay.is_open() and get_tree().paused, "Niederlage-Anzeige nicht sichtbar")
+	# Neustart über den Button (Mausklick): kein Weltangriff durch den Klick.
+	var swing_id := player.weapon.swing_id
+	var button: Button = overlay.get_node("Dim/Center/Panel/Margin/VBox/RestartButton")
+	var center := button.get_global_rect().get_center()
+	_mouse_button(MOUSE_BUTTON_LEFT, true, center)
+	_mouse_button(MOUSE_BUTTON_LEFT, false, center)
+	await _ticks(10)
+	_check(not overlay.is_open() and not get_tree().paused, "Neustart schließt die Anzeige nicht")
+	_check(player.state == PlayerController.State.MOVE and is_equal_approx(player.hp, player.tuning.max_hp), "Spieler nicht zurückgesetzt")
+	_check(player.global_position.distance_to(arena.combat_player_spawn.global_position) < 0.3, "Spieler nicht am Kampf-Spawn")
+	_check(is_equal_approx(e.hp, e.tuning.max_hp) and not e.is_defeated and not e.weapon.is_busy(), "Gegner nicht zurückgesetzt")
+	_check(e.global_position.distance_to(arena.enemy_spawn.global_position) < 0.3, "Gegner nicht am Start")
+	_check(arena.encounter == TrainingArena.Encounter.RUNNING, "Begegnung läuft nicht wieder")
+	_check(arena.effects.get_child_count() == 0, "Alte Effekte in der neuen Runde")
+	_check(player.weapon.swing_id == swing_id and not InputRouter.attack_held, "Klick auf Neustart löst Angriff aus")
+
+
+func test_e12_player_fall_resets_encounter() -> void:
+	var e := arena.enemy
+	var hit := HitInfo.new()
+	hit.damage = 20.0
+	hit.knockback_duration = 0.01
+	e.receive_hit(hit)
+	var restarts := [0]
+	arena.restarted.connect(func() -> void: restarts[0] += 1)
+	_gamepad_mode()
+	_place_player(Vector3(5.5, 0, 3.0), Vector3.RIGHT)
+	_set_stick(_stick_for_world(Vector3.RIGHT))
+	for i in 200:
+		await _ticks(1)
+		if player.state == PlayerController.State.OUT:
+			break
+	_set_stick(Vector2.ZERO)
+	_check(player.state == PlayerController.State.OUT, "Spieler nicht gefallen")
+	while player.state == PlayerController.State.OUT:
+		_check(e.state != Scrapling.State.ATTACK, "Gegner greift während des Spielerfalls an")
+		await _ticks(1)
+	await _ticks(2)
+	_check(restarts[0] == 1, "Spielerfall setzt die Begegnung %d-mal zurück" % restarts[0])
+	_check(is_equal_approx(e.hp, e.tuning.max_hp) and e.global_position.distance_to(arena.enemy_spawn.global_position) < 0.3, "Gegner nach Spielerfall nicht zurückgesetzt")
+	_check(player.global_position.distance_to(arena.combat_player_spawn.global_position) < 0.3, "Spieler nicht am Kampf-Spawn")
+	_check(arena.encounter == TrainingArena.Encounter.RUNNING, "Begegnung läuft nach Spielerfall nicht")
+
+
+func test_e13_mode_switch_and_pause_release_inputs() -> void:
+	_gamepad_mode()
+	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _ticks(3)
+	_check(InputRouter.attack_held, "RT gehalten nicht erkannt")
+	var swings := [0]
+	player.weapon.swing_started.connect(func(_id: int, _dir: Vector3) -> void: swings[0] += 1)
+	var pause_menu: PauseMenu = main.get("pause_menu")
+	pause_menu.open()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var mode_button: Button = pause_menu.get_node("Dim/Center/Panel/Margin/VBox/ModeButton")
+	var center := mode_button.get_global_rect().get_center()
+	_mouse_button(MOUSE_BUTTON_LEFT, true, center)
+	_mouse_button(MOUSE_BUTTON_LEFT, false, center)
+	var swings_before: int = swings[0]
+	await _ticks(30)
+	_check(arena.mode == TrainingArena.Mode.TRAINING, "Moduswahl per Button wechselt nicht")
+	_check(not get_tree().paused and not pause_menu.is_open(), "Pause nach Moduswechsel nicht aufgehoben")
+	_check(not InputRouter.attack_held and swings[0] == swings_before, "Moduswechsel hinterlässt gehaltene Eingaben / Klick greift an")
+	var visible_dummies := 0
+	for d in arena.dummies:
+		if d.visible and d.collision_layer != 0:
+			visible_dummies += 1
+	_check(visible_dummies == 3, "Trainingsdummies im Training nicht aktiv (%d)" % visible_dummies)
+	var e := arena.enemy
+	_check(not e.visible and e.state == Scrapling.State.INACTIVE and e.collision_layer == 0, "Gegner im Training aktiv")
+	_check(player.global_position.distance_to(arena.player_spawn.global_position) < 0.3, "Spieler nicht am Trainings-Spawn")
+	main.call("toggle_mode")
+	await _ticks(3)
+	_check(arena.mode == TrainingArena.Mode.COMBAT and e.visible and e.state != Scrapling.State.INACTIVE, "Rückwechsel in den Kampf fehlt")
+	for d in arena.dummies:
+		_check(not d.visible and d.process_mode == Node.PROCESS_MODE_DISABLED, "Dummy steht im Kampfmodus herum")
+	_check(is_equal_approx(e.hp, e.tuning.max_hp) and arena.encounter == TrainingArena.Encounter.RUNNING, "Begegnung nach Moduswechsel nicht frisch")
+
+
+## Playtest-Messung (kein Balance-Urteil): Spieler hält RT und drückt Richtung Gegner.
+## Dokumentiert, ob Dauerschlagen den Scrapling dauerhaft unterbricht.
+func test_e14_probe_held_attack_pressure() -> void:
+	var e := arena.enemy
+	_gamepad_mode()
+	var enemy_swings := [0]
+	var enemy_actives := [0]
+	var enemy_hits_taken := [0]
+	var last_phase := [e.weapon.phase]
+	e.weapon.swing_started.connect(func(_id: int, _dir: Vector3) -> void: enemy_swings[0] += 1)
+	var player_damage := [0]
+	player.damaged.connect(func(_hit: HitInfo) -> void: player_damage[0] += 1)
+	player.hit_landed.connect(func(target: Node3D, _p: Vector3) -> void:
+		if target == e:
+			enemy_hits_taken[0] += 1)
+	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	var ticks := 0
+	for i in 1200:
+		var to := e.global_position - player.global_position
+		to.y = 0
+		_set_stick(_stick_for_world(to.normalized()) if to.length() > 1.3 else Vector2.ZERO)
+		await _ticks(1)
+		ticks = i
+		if e.weapon.phase == WeaponController.Phase.ACTIVE and last_phase[0] != WeaponController.Phase.ACTIVE:
+			enemy_actives[0] += 1
+		last_phase[0] = e.weapon.phase
+		if arena.encounter != TrainingArena.Encounter.RUNNING:
+			break
+	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	_set_stick(Vector2.ZERO)
+	print("    Dauerschlagen: Ergebnis %s nach %.1f s · Hammertreffer %d · Gegner-Windups %d, davon ACTIVE %d · Spielertreffer %d · Spieler-HP %d" % [
+			TrainingArena.Encounter.keys()[arena.encounter], ticks * DT, enemy_hits_taken[0], enemy_swings[0],
+			enemy_actives[0], player_damage[0], int(player.hp)])
+	_check(arena.encounter != TrainingArena.Encounter.RUNNING, "Begegnung in 20 s nicht entschieden")

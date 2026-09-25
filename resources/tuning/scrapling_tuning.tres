@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ScraplingTuning" format=3]
+
+[ext_resource type="Script" path="res://scripts/actors/scrapling_tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")
+max_hp = 80.0
+move_speed = 2.6
+acceleration = 14.0
+deceleration = 20.0
+turn_sharpness = 7.0
+windup_turn_sharpness = 5.0
+commit_fraction = 0.55
+attack_start_distance = 1.45
+attack_start_max_angle = 35.0
+stop_distance = 1.2
+hit_stun = 0.4
+edge_probe_distance = 0.55
+hit_radius = 0.38
+ground_friction = 30.0

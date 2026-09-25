@@ -10,10 +10,20 @@ signal fell_out
 signal respawned
 signal health_changed(current: float, maximum: float)
 signal hit_landed(target: Node3D, point: Vector3)
+## Gültiger gegnerischer Treffer wurde angewendet (Schaden + Knockback).
+signal damaged(hit: HitInfo)
+## Treffer fiel in das Dodge-iFrame-Fenster: weder Schaden noch Knockback.
+signal hit_evaded(hit: HitInfo)
+## HP auf 0 gefallen; genau einmal pro Leben.
+signal died
 
-enum State { MOVE, ATTACK, DODGE, FALLING, OUT }
+## HIT: kurze Treffer-Reaktion für die Dauer des Knockbacks (keine Aktionen, Impuls wird nicht
+## von der Laufgeschwindigkeit überschrieben). DEAD: besiegt, keine Eingaben mehr.
+enum State { MOVE, ATTACK, DODGE, FALLING, OUT, HIT, DEAD }
 
 @export var tuning: PlayerTuning
+## Radius des Trefferkörpers für gegnerische Sektorprüfungen (entspricht der Kollisionskapsel).
+@export var hit_radius: float = 0.38
 
 var state: State = State.MOVE
 var hp: float = 100.0
@@ -21,7 +31,8 @@ var hp: float = 100.0
 var move_direction: Vector3 = Vector3.ZERO
 ## Letzte bewusste Blickrichtung. Wird nur von Stick-/Mausabsicht gesetzt.
 var facing_direction: Vector3 = Vector3.FORWARD
-## Beim Angriffsstart aus facing_direction kopiert und für den Swing fixiert.
+## Schlagrichtung des aktuellen Swings: folgt während WINDUP der sichtbaren Körperausrichtung
+## (die dem Facing nachgeführt wird) und ist ab ACTIVE fixiert.
 var attack_direction: Vector3 = Vector3.FORWARD
 ## Beim Dodge-Start fixiert.
 var dodge_direction: Vector3 = Vector3.FORWARD
@@ -33,6 +44,9 @@ var _dodge_ready_time: float = 0.0
 var _dodge_elapsed: float = 0.0
 var _airborne_time: float = 0.0
 var _gravity: float = 18.0
+var _knockback_velocity: Vector3 = Vector3.ZERO
+var _knockback_duration: float = 0.0
+var _knockback_left: float = 0.0
 var _visual: PlayerVisual = null
 var _visual_state := PlayerVisualState.new()
 
@@ -64,15 +78,18 @@ func _physics_process(delta: float) -> void:
 	if state == State.OUT:
 		return
 	var cam := get_viewport().get_camera_3d()
-	move_direction = camera_relative(InputRouter.move_input, cam)
-	_update_facing(cam)
+	move_direction = camera_relative(InputRouter.move_input, cam) if state != State.DEAD else Vector3.ZERO
+	if state != State.DEAD:
+		_update_facing(cam)
+	# Körper vor den Aktionen drehen: Beim Übergang WINDUP → ACTIVE übernimmt der Sektor
+	# genau die in diesem Tick sichtbare Ausrichtung.
+	_update_root_rotation(delta)
 	_update_actions(delta)
 	_apply_horizontal_velocity(delta)
 	if not is_on_floor():
 		velocity.y -= _gravity * delta
 	move_and_slide()
 	_update_airborne(delta)
-	_update_root_rotation(delta)
 	_push_visual_state()
 
 
@@ -120,12 +137,23 @@ func _update_facing(cam: Camera3D) -> void:
 # --- Aktionen ----------------------------------------------------------------
 
 func _update_actions(delta: float) -> void:
+	if state == State.DEAD:
+		return
+	if state == State.HIT:
+		if _knockback_left <= 0.0:
+			state = State.MOVE
+		else:
+			return
 	if state == State.DODGE:
 		_dodge_elapsed += delta
 		if _dodge_elapsed >= tuning.dodge_duration:
 			_end_dodge()
-	if state == State.ATTACK and weapon.tick(delta):
-		state = State.MOVE
+	if state == State.ATTACK:
+		weapon.aim(body_forward())  # wirkt nur während WINDUP
+		var finished := weapon.tick(delta)
+		attack_direction = weapon.direction
+		if finished:
+			state = State.MOVE
 
 	var grounded := is_on_floor()
 	var can_dodge := (state == State.MOVE or state == State.ATTACK) and grounded and _clock >= _dodge_ready_time
@@ -138,12 +166,12 @@ func _update_actions(delta: float) -> void:
 
 
 func _start_attack() -> void:
-	attack_direction = facing_direction
 	state = State.ATTACK
 	# Voller Takt ab Start: Dodge-Abbruch beschleunigt den nächsten Angriff nicht.
 	_attack_ready_time = _clock + weapon.data.total_duration()
-	rotation.y = yaw_for_direction(attack_direction)
-	weapon.start_swing(attack_direction)
+	# Kein Einrasten: Der Körper dreht während WINDUP weiter weich zum Facing, der Sektor folgt ihm.
+	weapon.start_swing(body_forward())
+	attack_direction = weapon.direction
 
 
 func _start_dodge() -> void:
@@ -167,11 +195,53 @@ func is_invulnerable() -> bool:
 			and _dodge_elapsed <= tuning.dodge_iframe_end
 
 
+func is_targetable() -> bool:
+	return state != State.OUT and state != State.DEAD
+
+
+## Explizite Trefferschnittstelle (gleiche Signatur wie Dummy/Gegner). true = Treffer angewendet.
+## Während der Dodge-iFrames: weder Schaden noch Knockback. Ein laufender eigener Angriff wird
+## abgebrochen; der Angriffstakt bleibt ab dessen Start bestehen (kein früherer Folgeangriff).
+func receive_hit(hit: HitInfo) -> bool:
+	if not is_targetable():
+		return false
+	if is_invulnerable():
+		hit_evaded.emit(hit)
+		return false
+	hp = maxf(hp - hit.damage, 0.0)
+	health_changed.emit(hp, tuning.max_hp)
+	if state == State.ATTACK:
+		weapon.cancel()
+	_knockback_velocity = Vector3(hit.knockback_velocity.x, 0.0, hit.knockback_velocity.z)
+	_knockback_duration = maxf(hit.knockback_duration, 0.001)
+	_knockback_left = _knockback_duration
+	velocity.x = _knockback_velocity.x
+	velocity.z = _knockback_velocity.z
+	if _visual != null:
+		_visual.play_hit(global_basis.inverse() * _knockback_velocity.normalized())
+	damaged.emit(hit)
+	if hp <= 0.0:
+		state = State.DEAD
+		weapon.cancel()
+		died.emit()
+	else:
+		state = State.HIT
+	return true
+
+
 # --- Bewegung ----------------------------------------------------------------
 
 func _apply_horizontal_velocity(delta: float) -> void:
 	var horizontal := Vector2(velocity.x, velocity.z)
-	if state == State.DODGE:
+	if _knockback_left > 0.0:
+		# Zeitbasierter Trefferimpuls, linear abklingend; nicht von der Laufgeschwindigkeit überschrieben.
+		_knockback_left = maxf(_knockback_left - delta, 0.0)
+		if is_on_floor():
+			horizontal = Vector2(_knockback_velocity.x, _knockback_velocity.z) * (_knockback_left / _knockback_duration)
+	elif state == State.DEAD:
+		if is_on_floor():
+			horizontal = horizontal.move_toward(Vector2.ZERO, tuning.deceleration * delta)
+	elif state == State.DODGE:
 		horizontal = Vector2(dodge_direction.x, dodge_direction.z) * tuning.dodge_speed
 	else:
 		var speed := tuning.move_speed
@@ -203,10 +273,19 @@ static func yaw_for_direction(direction: Vector3) -> float:
 	return atan2(-direction.x, -direction.z)
 
 
+## Sichtbare Körperausrichtung (XZ). Nur während ACTIVE an die fixierte Schlagrichtung gebunden,
+## in allen anderen Phasen (auch WINDUP und RECOVERY) weich dem Facing nachgeführt.
+func body_forward() -> Vector3:
+	var forward := -global_basis.z
+	return Vector3(forward.x, 0.0, forward.z).normalized()
+
+
 func _update_root_rotation(delta: float) -> void:
-	var target := attack_direction if state == State.ATTACK else facing_direction
+	if state == State.ATTACK and weapon.phase == WeaponController.Phase.ACTIVE:
+		rotation.y = yaw_for_direction(weapon.direction)
+		return
 	var weight := 1.0 - exp(-tuning.turn_sharpness * delta)
-	rotation.y = lerp_angle(rotation.y, yaw_for_direction(target), weight)
+	rotation.y = lerp_angle(rotation.y, yaw_for_direction(facing_direction), weight)
 
 
 func _push_visual_state() -> void:
@@ -218,9 +297,13 @@ func _push_visual_state() -> void:
 	s.local_move_direction = global_basis.inverse() * horizontal.normalized() if horizontal.length() > 0.05 else Vector3.ZERO
 	s.grounded = is_on_floor()
 	s.falling = state == State.FALLING
+	s.dead = state == State.DEAD
 	s.action = PlayerVisualState.Action.NONE
 	s.action_progress = 0.0
-	if state == State.ATTACK:
+	if state == State.HIT:
+		s.action = PlayerVisualState.Action.HIT
+		s.action_progress = 1.0 - _knockback_left / _knockback_duration
+	elif state == State.ATTACK:
 		match weapon.phase:
 			WeaponController.Phase.WINDUP:
 				s.action = PlayerVisualState.Action.ATTACK_WINDUP
@@ -245,6 +328,7 @@ func fall_out() -> bool:
 	state = State.OUT
 	weapon.cancel()
 	velocity = Vector3.ZERO
+	_knockback_left = 0.0
 	fall_count += 1
 	visual_root.visible = false
 	weapon.visible = false
@@ -264,6 +348,7 @@ func respawn_at(spawn: Transform3D) -> void:
 	weapon.cancel()
 	state = State.MOVE
 	_airborne_time = 0.0
+	_knockback_left = 0.0
 	_attack_ready_time = _clock
 	_dodge_ready_time = _clock
 	visual_root.visible = true
@@ -273,7 +358,7 @@ func respawn_at(spawn: Transform3D) -> void:
 	respawned.emit()
 
 
-## Vollständiger Trainingsreset: Respawn plus volle HP.
+## Vollständiger Reset (Training/Begegnung): Respawn plus volle HP.
 func reset_full(spawn: Transform3D) -> void:
 	hp = tuning.max_hp
 	health_changed.emit(hp, tuning.max_hp)

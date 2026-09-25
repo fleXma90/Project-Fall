@@ -3,9 +3,14 @@ extends CanvasLayer
 ## Pausemenü: per Touch, Maus/Tastatur (Esc) und Controller (Start, D-Pad/Stick + A, B = weiter) bedienbar.
 
 signal reset_requested
+signal mode_toggle_requested
+
+## Solange ein anderes modales Overlay (Ergebnisanzeige) offen ist, öffnet die Pause nicht.
+var blocked: bool = false
 
 @onready var _resume_button: Button = $Dim/Center/Panel/Margin/VBox/ResumeButton
 @onready var _reset_button: Button = $Dim/Center/Panel/Margin/VBox/ResetButton
+@onready var _mode_button: Button = $Dim/Center/Panel/Margin/VBox/ModeButton
 @onready var _touch_button: Button = $Dim/Center/Panel/Margin/VBox/TouchTestButton
 
 
@@ -14,6 +19,7 @@ func _ready() -> void:
 	visible = false
 	_resume_button.pressed.connect(close)
 	_reset_button.pressed.connect(reset_requested.emit)
+	_mode_button.pressed.connect(mode_toggle_requested.emit)
 	_touch_button.pressed.connect(_toggle_touch_test)
 
 
@@ -21,8 +27,14 @@ func is_open() -> bool:
 	return visible
 
 
+## Beschriftung nach aktuellem Modus: Button wechselt jeweils in den anderen Modus.
+func set_mode_labels(in_combat: bool) -> void:
+	_mode_button.text = "Modus wechseln: Training" if in_combat else "Modus wechseln: Kampf"
+	_reset_button.text = "Kampf neu starten" if in_combat else "Training zurücksetzen"
+
+
 func open() -> void:
-	if visible:
+	if visible or blocked:
 		return
 	InputRouter.release_all()
 	get_tree().paused = true
@@ -40,7 +52,7 @@ func close() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("pause"):
+	if event.is_action_pressed("pause") and not blocked:
 		if visible:
 			close()
 		else:

@@ -15,6 +15,7 @@ var _rate_timer: float = 0.0
 @onready var _hp_label: Label = $SafeRoot/HpPanel/Margin/VBox/HpLabel
 @onready var _pause_button: Button = $SafeRoot/PauseButton
 @onready var _debug_label: Label = $SafeRoot/DebugLabel
+@onready var _encounter_label: Label = $SafeRoot/EncounterLabel
 
 
 func _ready() -> void:
@@ -56,15 +57,55 @@ func _process(delta: float) -> void:
 		_physics_rate = roundi(_physics_ticks / _rate_timer)
 		_physics_ticks = 0
 		_rate_timer = 0.0
+	_update_encounter_label()
 	if not _debug_label.visible or _player == null:
 		return
-	var facing := _player.facing_direction
 	var lines: PackedStringArray = []
-	lines.append("Eingabe: %s" % InputRouter.source_name())
-	lines.append("Facing: (%.2f, %.2f)  Zustand: %s" % [facing.x, facing.z, PlayerController.State.keys()[_player.state]])
+	lines.append("Eingabe: %s  ·  Zustand: %s" % [InputRouter.source_name(), PlayerController.State.keys()[_player.state]])
+	# Getrennte Richtungen als Bildschirmwinkel (0° = oben, 90° = rechts).
+	var velocity := Vector3(_player.velocity.x, 0.0, _player.velocity.z)
+	var weapon := _player.weapon
+	var swing := "—"
+	if weapon.is_busy():
+		swing = "%s %s %d%%" % [_screen_angle(weapon.direction), WeaponController.Phase.keys()[weapon.phase], roundi(weapon.phase_progress() * 100.0)]
+	lines.append("Bewegung %s %.1f m/s · Facing %s · Körper %s · Schlag %s" % [
+			_screen_angle(velocity) if velocity.length() > 0.1 else "—", velocity.length(),
+			_screen_angle(_player.facing_direction), _screen_angle(_player.body_forward()), swing])
 	lines.append("FPS %d  ·  Physik %d/s" % [Engine.get_frames_per_second(), _physics_rate])
-	if _arena != null:
+	if _arena != null and _arena.mode == TrainingArena.Mode.COMBAT:
+		var enemy := _arena.enemy
+		lines.append("Scrapling: %s · Waffe %s %d%% · festgelegt %s" % [Scrapling.State.keys()[enemy.state],
+				WeaponController.Phase.keys()[enemy.weapon.phase], roundi(enemy.weapon.phase_progress() * 100.0),
+				"ja" if enemy.is_committed() else "nein"])
+	elif _arena != null:
 		lines.append("Dummies besiegt: HP %d · Kante %d  ·  Stürze: %d" % [
 				_arena.dummy_hp_defeats, _arena.dummy_fall_defeats, _arena.player_fall_count])
 	lines.append("F2 Touch-Test · F3 Debug · R Reset")
 	_debug_label.text = "\n".join(lines)
+
+
+func _update_encounter_label() -> void:
+	if _arena == null:
+		return
+	if _arena.mode == TrainingArena.Mode.TRAINING:
+		_encounter_label.text = "TRAINING"
+		return
+	var enemy := _arena.enemy
+	var status := ""
+	match _arena.encounter:
+		TrainingArena.Encounter.VICTORY:
+			status = "  ·  besiegt"
+		TrainingArena.Encounter.DEFEAT:
+			status = "  ·  Niederlage"
+	_encounter_label.text = "KAMPF  ·  Scrapling HP %d / %d%s" % [int(ceil(enemy.hp)), int(enemy.tuning.max_hp), status]
+
+
+func _screen_angle(direction: Vector3) -> String:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null or direction.length_squared() < 0.0001:
+		return "—"
+	var b := cam.global_basis
+	var right := Vector3(b.x.x, 0.0, b.x.z).normalized()
+	var up := Vector3(-b.z.x, 0.0, -b.z.z).normalized()
+	var degrees := rad_to_deg(atan2(direction.dot(right), direction.dot(up)))
+	return "%d°" % (roundi(fposmod(degrees, 360.0)) % 360)
