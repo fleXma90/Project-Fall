@@ -1,0 +1,178 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/actors/placeholder_golem_visual.gd" id="1_visual"]
+
+[sub_resource type="StandardMaterial3D" id="Mat_metal"]
+albedo_color = Color(0.3, 0.31, 0.35, 1)
+metallic = 0.45
+roughness = 0.55
+
+[sub_resource type="StandardMaterial3D" id="Mat_plate"]
+albedo_color = Color(0.5, 0.46, 0.4, 1)
+metallic = 0.4
+roughness = 0.5
+
+[sub_resource type="StandardMaterial3D" id="Mat_face"]
+albedo_color = Color(0.07, 0.07, 0.08, 1)
+roughness = 0.7
+
+[sub_resource type="StandardMaterial3D" id="Mat_eye"]
+albedo_color = Color(1, 0.75, 0.25, 1)
+emission_enabled = true
+emission = Color(1, 0.6, 0.12, 1)
+emission_energy_multiplier = 4.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_scarf"]
+albedo_color = Color(0.7, 0.16, 0.1, 1)
+roughness = 0.9
+
+[sub_resource type="BoxMesh" id="Mesh_leg"]
+material = SubResource("Mat_metal")
+size = Vector3(0.22, 0.36, 0.26)
+
+[sub_resource type="BoxMesh" id="Mesh_foot"]
+material = SubResource("Mat_plate")
+size = Vector3(0.27, 0.1, 0.36)
+
+[sub_resource type="BoxMesh" id="Mesh_torso"]
+material = SubResource("Mat_metal")
+size = Vector3(0.74, 0.56, 0.52)
+
+[sub_resource type="BoxMesh" id="Mesh_chest"]
+material = SubResource("Mat_plate")
+size = Vector3(0.52, 0.34, 0.05)
+
+[sub_resource type="BoxMesh" id="Mesh_scarf"]
+material = SubResource("Mat_scarf")
+size = Vector3(0.68, 0.11, 0.58)
+
+[sub_resource type="BoxMesh" id="Mesh_scarf_tail"]
+material = SubResource("Mat_scarf")
+size = Vector3(0.14, 0.32, 0.05)
+
+[sub_resource type="BoxMesh" id="Mesh_head"]
+material = SubResource("Mat_plate")
+size = Vector3(0.66, 0.46, 0.56)
+
+[sub_resource type="BoxMesh" id="Mesh_faceplate"]
+material = SubResource("Mat_face")
+size = Vector3(0.54, 0.28, 0.03)
+
+[sub_resource type="SphereMesh" id="Mesh_eye"]
+material = SubResource("Mat_eye")
+radius = 0.075
+height = 0.15
+radial_segments = 12
+rings = 6
+
+[sub_resource type="BoxMesh" id="Mesh_brow"]
+material = SubResource("Mat_eye")
+size = Vector3(0.34, 0.035, 0.07)
+
+[sub_resource type="BoxMesh" id="Mesh_arm"]
+material = SubResource("Mat_metal")
+size = Vector3(0.2, 0.46, 0.22)
+
+[sub_resource type="BoxMesh" id="Mesh_arm_forward"]
+material = SubResource("Mat_metal")
+size = Vector3(0.2, 0.2, 0.44)
+
+[sub_resource type="BoxMesh" id="Mesh_hand"]
+material = SubResource("Mat_plate")
+size = Vector3(0.28, 0.26, 0.28)
+
+[sub_resource type="BoxMesh" id="Mesh_shoulder"]
+material = SubResource("Mat_plate")
+size = Vector3(0.28, 0.22, 0.32)
+
+[node name="PlaceholderGolem" type="Node3D"]
+script = ExtResource("1_visual")
+
+[node name="Body" type="Node3D" parent="."]
+
+[node name="LegLeft" type="Node3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.18, 0.36, 0)
+
+[node name="Leg" type="MeshInstance3D" parent="Body/LegLeft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.17, 0)
+mesh = SubResource("Mesh_leg")
+
+[node name="Foot" type="MeshInstance3D" parent="Body/LegLeft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.31, -0.04)
+mesh = SubResource("Mesh_foot")
+
+[node name="LegRight" type="Node3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.18, 0.36, 0)
+
+[node name="Leg" type="MeshInstance3D" parent="Body/LegRight"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.17, 0)
+mesh = SubResource("Mesh_leg")
+
+[node name="Foot" type="MeshInstance3D" parent="Body/LegRight"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.31, -0.04)
+mesh = SubResource("Mesh_foot")
+
+[node name="Torso" type="MeshInstance3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.62, 0)
+mesh = SubResource("Mesh_torso")
+
+[node name="ChestPlate" type="MeshInstance3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.63, -0.27)
+mesh = SubResource("Mesh_chest")
+
+[node name="Scarf" type="MeshInstance3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.93, 0)
+mesh = SubResource("Mesh_scarf")
+
+[node name="ScarfTail" type="MeshInstance3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 0.94, 0.34, 0, -0.34, 0.94, 0.16, 0.8, 0.31)
+mesh = SubResource("Mesh_scarf_tail")
+
+[node name="Head" type="MeshInstance3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.12, 0)
+mesh = SubResource("Mesh_head")
+
+[node name="FacePlate" type="MeshInstance3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, -0.28)
+mesh = SubResource("Mesh_faceplate")
+
+[node name="EyeLeft" type="MeshInstance3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.13, 1.12, -0.29)
+mesh = SubResource("Mesh_eye")
+
+[node name="EyeRight" type="MeshInstance3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.13, 1.12, -0.29)
+mesh = SubResource("Mesh_eye")
+
+[node name="Brow" type="MeshInstance3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.36, -0.2)
+mesh = SubResource("Mesh_brow")
+
+[node name="ArmLeft" type="Node3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.47, 0.84, 0)
+
+[node name="Arm" type="MeshInstance3D" parent="Body/ArmLeft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.22, 0)
+mesh = SubResource("Mesh_arm")
+
+[node name="Hand" type="MeshInstance3D" parent="Body/ArmLeft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+mesh = SubResource("Mesh_hand")
+
+[node name="ShoulderRight" type="MeshInstance3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.44, 0.86, 0)
+mesh = SubResource("Mesh_shoulder")
+
+[node name="SwingPivot" type="Node3D" parent="Body"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.44, 0.84, 0)
+
+[node name="Arm" type="MeshInstance3D" parent="Body/SwingPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.2)
+mesh = SubResource("Mesh_arm_forward")
+
+[node name="Hand" type="MeshInstance3D" parent="Body/SwingPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.42)
+mesh = SubResource("Mesh_hand")
+
+[node name="HandSocket" type="Marker3D" parent="Body/SwingPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.44)

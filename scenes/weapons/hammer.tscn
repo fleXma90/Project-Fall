@@ -1,0 +1,75 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="Mat_wood"]
+albedo_color = Color(0.45, 0.29, 0.17, 1)
+roughness = 0.8
+
+[sub_resource type="StandardMaterial3D" id="Mat_iron"]
+albedo_color = Color(0.36, 0.37, 0.4, 1)
+metallic = 0.55
+roughness = 0.4
+
+[sub_resource type="StandardMaterial3D" id="Mat_iron_dark"]
+albedo_color = Color(0.2, 0.2, 0.23, 1)
+metallic = 0.5
+roughness = 0.5
+
+[sub_resource type="StandardMaterial3D" id="Mat_glow"]
+albedo_color = Color(1, 0.5, 0.15, 1)
+emission_enabled = true
+emission = Color(1, 0.45, 0.1, 1)
+emission_energy_multiplier = 2.5
+
+[sub_resource type="CylinderMesh" id="Mesh_handle"]
+material = SubResource("Mat_wood")
+top_radius = 0.045
+bottom_radius = 0.05
+height = 1.25
+radial_segments = 10
+rings = 1
+
+[sub_resource type="BoxMesh" id="Mesh_head"]
+material = SubResource("Mat_iron")
+size = Vector3(0.66, 0.38, 0.38)
+
+[sub_resource type="BoxMesh" id="Mesh_face"]
+material = SubResource("Mat_iron_dark")
+size = Vector3(0.1, 0.46, 0.46)
+
+[sub_resource type="BoxMesh" id="Mesh_band"]
+material = SubResource("Mat_glow")
+size = Vector3(0.05, 0.4, 0.4)
+
+[sub_resource type="BoxMesh" id="Mesh_pommel"]
+material = SubResource("Mat_iron_dark")
+size = Vector3(0.12, 0.12, 0.1)
+
+[node name="Hammer" type="Node3D"]
+
+[node name="Handle" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0, -0.45)
+mesh = SubResource("Mesh_handle")
+
+[node name="Pommel" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.19)
+mesh = SubResource("Mesh_pommel")
+
+[node name="Head" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1.05)
+mesh = SubResource("Mesh_head")
+
+[node name="FaceLeft" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.34, 0, -1.05)
+mesh = SubResource("Mesh_face")
+
+[node name="FaceRight" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.34, 0, -1.05)
+mesh = SubResource("Mesh_face")
+
+[node name="GlowLeft" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.2, 0, -1.05)
+mesh = SubResource("Mesh_band")
+
+[node name="GlowRight" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.2, 0, -1.05)
+mesh = SubResource("Mesh_band")

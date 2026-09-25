@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/weapon_data.gd" id="1_weapon"]
+
+[resource]
+script = ExtResource("1_weapon")
+display_name = "Hammer"
+windup = 0.14
+active = 0.1
+recovery = 0.28
+damage = 20.0
+attack_range = 1.9
+arc_degrees = 110.0
+max_height_difference = 1.5
+knockback_speed = 8.0
+knockback_duration = 0.28

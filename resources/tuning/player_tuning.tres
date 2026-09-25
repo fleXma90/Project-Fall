@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="PlayerTuning" format=3]
+
+[ext_resource type="Script" path="res://scripts/actors/player_tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")
+max_hp = 100.0
+move_speed = 4.6
+acceleration = 24.0
+deceleration = 30.0
+air_acceleration = 4.0
+attack_move_multiplier = 0.7
+turn_sharpness = 22.0
+dodge_duration = 0.18
+dodge_speed = 10.0
+dodge_cooldown = 0.7
+dodge_iframe_start = 0.02
+dodge_iframe_end = 0.14
+fall_state_delay = 0.12
+mouse_facing_min_distance = 0.25

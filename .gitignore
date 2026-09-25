@@ -1,0 +1,30 @@
+# Godot generated cache (keep source .uid files versioned)
+.godot/
+.import/
+
+# Local exports and generated QA output
+builds/
+exports/
+qa/output/
+
+# Local credentials and machine-specific configuration
+.export_credentials
+export_credentials.cfg
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+.env
+.env.*
+!.env.example
+android/local.properties
+android/.gradle/
+android/build/.gradle/
+local.godot-path.txt
+
+# OS / local editor state
+.DS_Store
+Thumbs.db
+*.tmp
+.vscode/
+.idea/
