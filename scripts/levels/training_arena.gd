@@ -29,6 +29,12 @@ signal floor_cleared(index: int)
 signal descent_started(regular: bool, landing_point: Vector3)
 ## Abstieg: Spieler ist auf Ebene 2 gelandet (fall_damage 0 bei regulärem Abstieg).
 signal floor_landed(fall_damage: float)
+## M3A: Ein Szenario hat begonnen; run ist der neue Abstiegs-Run (null in allen anderen Szenarien).
+signal run_started(run: RunState)
+## M3A: XP-Orb eingesammelt (bzw. beim Räumen gutgeschrieben).
+signal xp_collected(amount: int)
+## M3A: Pflichtauswahl 1 aus 3 nach dem Räumen eines nicht finalen Floors.
+signal floor_reward_offered(choices: Array[StringName])
 
 enum Mode { TRAINING, COMBAT, GROUP, MIXED, DESCENT }  # COMBAT = Duell (M2A)
 enum StunProfile { BASE, SHORT }
@@ -72,6 +78,18 @@ const BOLT_SCENE: PackedScene = preload("res://scenes/combat/spark_bolt.tscn")
 @export var upper_rise: float = 6.0
 @export var lower_reveal_range: Vector2 = Vector2(0.35, 0.8)
 
+@export_group("Run-Progression")
+## XP je besiegtem Gegner (HP- und Kantensieg gleich), als sichtbare Orbs zu je höchstens xp_per_orb.
+@export var scrapling_xp: int = 30
+@export var sparker_xp: int = 40
+@export var xp_per_orb: int = 10
+## 0 = zufälliger Run-Seed; Tests setzen einen festen Wert für reproduzierbare Upgrade-Auswahl.
+@export var run_seed: int = 0
+## Zeit zwischen dem Räumen von Ebene 1 und der Upgrade-Auswahl (liegende Orbs werden eingesaugt);
+## sind dann noch Orbs unterwegs, wird bis reward_max_delay gewartet und der Rest gutgeschrieben.
+@export var reward_delay: float = 0.8
+@export var reward_max_delay: float = 1.6
+
 var mode: Mode = Mode.TRAINING
 var stun_profile: StunProfile = StunProfile.BASE
 var shot_profile: ShotProfile = ShotProfile.STANDARD
@@ -94,6 +112,12 @@ var descent: Descent = Descent.NONE
 var descent_regular: bool = false
 var landing_point: Vector3 = Vector3.ZERO
 var last_fall_damage: float = 0.0
+## M3A: aktueller Abstiegs-Run (nur Mode.DESCENT) und Floor-Clear-Belohnung.
+var run: RunState = null
+## Anspruch auf ein Floor-Upgrade besteht (Floor geräumt), Auswahl steht aus.
+var reward_pending: bool = false
+var reward_offered: bool = false
+var reward_choices: Array[StringName] = []
 ## Laufende Rundenauswertung (nur Kampfszenarien) und die zuletzt abgeschlossene.
 var stats: EncounterStats = null
 var last_stats: EncounterStats = null
@@ -112,6 +136,10 @@ var _upper_base_position: Vector3
 var _lower_base_position: Vector3
 ## Ausgangshöhen der zurückgelassenen Gegner der Ebene 1 (sie ziehen mit der Ebene nach oben weg).
 var _upper_combatant_base_y: Dictionary = {}
+## Ebene, auf der der Kampf läuft (1 bis zur Landung auf Ebene 2).
+var _active_floor: int = 1
+## XP von Gegnern, die erst nach dem Verlassen ihrer Ebene besiegt wurden (nur bei Clear gutgeschrieben).
+var _left_floor_xp: int = 0
 
 @onready var player_spawn: Marker3D = $PlayerSpawn
 @onready var combat_player_spawn: Marker3D = $CombatPlayerSpawn
@@ -126,6 +154,7 @@ var _upper_combatant_base_y: Dictionary = {}
 @onready var sparker: Sparker = $Sparker
 @onready var effects: Node3D = $Effects
 @onready var projectiles: Node3D = $Projectiles
+@onready var pickups: Node3D = $Pickups
 @onready var upper_floor: FloorGeometry = $Platform
 @onready var hatch: DescentHatch = $Platform/Hatch
 @onready var lower_floor: FloorGeometry = $LowerFloor
@@ -371,7 +400,10 @@ func restart() -> void:
 		if mode == Mode.DESCENT:
 			_reset_lower_combatants()
 		encounter = Encounter.RUNNING
+	# M3A: Jeder Neustart im Abstieg beginnt einen neuen Run (Basiswerte); andere Szenarien ohne Run.
+	run = RunState.new(run_seed) if mode == Mode.DESCENT else null
 	if player != null:
+		player.set_run(run)  # vor reset_full: volle Basis-HP
 		player.fall_count = 0
 		player.reset_full(current_player_spawn().global_transform)
 		_tracked_player_hp = player.hp
@@ -379,6 +411,7 @@ func restart() -> void:
 		# Erst nach dem Spieler-Reset anlegen: die Rücksetzung der HP ist kein Schaden.
 		_begin_stats()
 	InputRouter.release_all()
+	run_started.emit(run)
 	restarted.emit()
 
 
@@ -399,6 +432,12 @@ func _reset_floors() -> void:
 	descent = Descent.FLOOR_1 if mode == Mode.DESCENT else Descent.NONE
 	descent_regular = false
 	last_fall_damage = 0.0
+	_active_floor = 1
+	_left_floor_xp = 0
+	reward_pending = false
+	reward_offered = false
+	reward_choices.clear()
+	_clear_orbs()
 	hatch.close()
 	upper_floor.set_enabled(true)
 	# Ebene 2 existiert im Abstieg physisch an ihrer Grundposition, bleibt aber bis zum Übergang verborgen.
@@ -528,10 +567,16 @@ func _descent_physics() -> void:
 func _begin_drop() -> void:
 	descent_regular = descent == Descent.FLOOR_1_CLEARED and hatch.is_open and hatch.contains_world(player.global_position, 0.3)
 	if descent == Descent.FLOOR_1:
-		# Sturz vor dem Räumen: verbleibende Gegner der Ebene 1 werden übersprungen.
+		# Sturz vor dem Räumen: verbleibende Gegner der Ebene 1 werden übersprungen (keine XP, kein Upgrade).
+		# Liegengebliebene Orbs werden eingefroren und verfallen bei der Landung – außer die Ebene wird im
+		# selben Moment doch noch geräumt (dann Gutschrift).
 		_stop_all_combatants()
 		clear_projectiles()
 		_finish_stats(EncounterStats.Outcome.SKIPPED)
+		_suspend_orbs(1)
+	else:
+		# Geräumte Ebene: noch liegende XP werden gutgeschrieben; eine offene Upgrade-Auswahl bleibt bestehen.
+		_credit_orbs(1)
 	descent = Descent.DROPPING
 	player.protect_from_combat(10.0)  # während des Falls; bei der Landung auf landing_protection verkürzt
 	# Senkrechter Fall wie durch die Luke: Der Schwung klingt kurz ab, kein seitliches Lenken.
@@ -550,6 +595,8 @@ func _begin_drop() -> void:
 	# Ebene 1 ist ab jetzt nur noch Kulisse: keine Kollision, zurückgelassene Gegner ziehen mit ihr weg.
 	upper_floor.collision_layer = 0
 	for c in upper_combatants():
+		if not bool(c.get("is_defeated")) and not bool(c.call("is_on_floor")) and c.global_position.y < -0.2:
+			continue  # fällt bereits über die Kante: darf regulär besiegt werden (Clear im selben Moment)
 		c.set_physics_process(false)
 		_upper_combatant_base_y[c] = c.global_position.y
 	descent_started.emit(descent_regular, landing_point)
@@ -618,6 +665,8 @@ func _clear_of_lower_enemies(point: Vector3) -> bool:
 ## Landung auf Ebene 2: Gegner der Ebene 2 übernehmen, Sturzschaden, Landeschutz.
 func _land() -> void:
 	descent = Descent.FLOOR_2
+	_active_floor = 2
+	_discard_orbs(1)  # Orbs einer nicht geräumten, verlassenen Ebene verfallen
 	active_enemies.assign(lower_enemies)
 	active_shooters.assign(lower_shooters)
 	_begin_stats()
@@ -629,8 +678,9 @@ func _land() -> void:
 	player.protect_from_combat(landing_protection)
 	player.apply_fall_damage(damage)  # kann tödlich sein → _on_player_died
 	if encounter == Encounter.RUNNING:
-		for c in combatants():
-			c.set("target", player)
+		# Ausstehendes Floor-Upgrade (Clear im Moment des Sturzes) zuerst wählen; Gegner erst danach aktiv.
+		if not (reward_pending and _offer_reward(_generation)):
+			_activate_current_combatants()
 	_apply_transition(1.0)
 	# Zurückgelassene Gegner der Ebene 1 endgültig deaktivieren (Neustart setzt sie zurück).
 	for c in upper_combatants():
@@ -707,18 +757,193 @@ func _on_combatant_defeated(c: Node3D, by_fall: bool) -> void:
 			stats.enemies_fall_defeated += 1
 		else:
 			stats.enemies_hp_defeated += 1
-	if enemies_remaining() == 0 and descent == Descent.FLOOR_1:
-		# Abstieg: Ebene 1 geräumt → Luke öffnet sich, die Begegnung läuft weiter.
-		descent = Descent.FLOOR_1_CLEARED
-		clear_projectiles()
-		_finish_stats(EncounterStats.Outcome.CLEARED)
-		hatch.open()
-		floor_cleared.emit(1)
+	if run != null:
+		_drop_xp(c, by_fall)
+	if enemies_remaining() == 0 and mode == Mode.DESCENT and _active_floor == 1:
+		_on_upper_floor_cleared()
 	elif enemies_remaining() == 0:
 		encounter = Encounter.VICTORY
 		clear_projectiles()
+		_vacuum_orbs(_active_floor)
 		_finish_stats(EncounterStats.Outcome.VICTORY)
 		encounter_finished.emit(true)
+
+
+# --- Run-Progression: XP-Orbs und Floor-Clear-Belohnung (M3A) --------------------------------
+
+func is_final_floor() -> bool:
+	return mode != Mode.DESCENT or _active_floor == 2
+
+
+func xp_for(c: Node3D) -> int:
+	return sparker_xp if c is Sparker else scrapling_xp
+
+
+## Ebene, auf der sich der Spieler befindet (während des Falls gilt Ebene 1 als verlassen).
+func _player_floor() -> int:
+	return 1 if descent == Descent.FLOOR_1 or descent == Descent.FLOOR_1_CLEARED else 2
+
+
+## XP eines besiegten Gegners als Orbs abwerfen: HP-Sieg am Gegner, Kantensieg an seiner letzten
+## Bodenposition (sicher auf die Ebene gezogen). Hat der Spieler diese Ebene schon verlassen, gibt es
+## keine Orbs; die XP zählen nur, falls die Ebene dadurch geräumt wird.
+func _drop_xp(c: Node3D, by_fall: bool) -> void:
+	var amount := xp_for(c)
+	var enemy_floor := 2 if lower_combatants().has(c) else 1
+	if enemy_floor != _player_floor():
+		_left_floor_xp += amount
+		return
+	var floor_node: FloorGeometry = lower_floor if enemy_floor == 2 else upper_floor
+	var origin: Vector3 = c.get("last_ground_position") if by_fall else c.global_position
+	var center := _safe_floor_point(floor_node, origin, 0.6)
+	var start := c.global_position + Vector3.UP * 0.6
+	var count := maxi(ceili(float(amount) / float(xp_per_orb)), 1)
+	var remaining := amount
+	for i in count:
+		var value := mini(xp_per_orb, remaining)
+		remaining -= value
+		var angle := TAU * i / count + 0.7
+		var rest := center + Vector3(cos(angle), 0.0, sin(angle)) * (0.5 + 0.25 * (i % 2))
+		var local := floor_node.to_local(rest)
+		if not floor_node.is_safe_point(Vector2(local.x, local.z), 0.25):
+			rest = center
+		var orb := XpOrb.new()
+		orb.setup(start, rest, value, player, enemy_floor)
+		orb.collected.connect(_on_orb_collected)
+		pickups.add_child(orb)
+
+
+## Nächster Punkt mit Boden ringsum (Abstand margin), auf Höhe der Ebenenoberkante.
+func _safe_floor_point(floor_node: FloorGeometry, near: Vector3, margin: float) -> Vector3:
+	var local := floor_node.to_local(near)
+	var origin := Vector2(local.x, local.z)
+	for ring in 24:
+		var count := 1 if ring == 0 else 12
+		for i in count:
+			var angle := TAU * i / count
+			var candidate := origin + Vector2(cos(angle), sin(angle)) * ring * 0.4
+			if floor_node.is_safe_point(candidate, margin):
+				return floor_node.to_global(Vector3(candidate.x, 0.0, candidate.y))
+	return floor_node.to_global(Vector3(origin.x, 0.0, origin.y))
+
+
+func orbs(floor_number: int = 0) -> Array[XpOrb]:
+	var result: Array[XpOrb] = []
+	for node in pickups.get_children():
+		var orb := node as XpOrb
+		if orb != null and not orb.is_queued_for_deletion() and (floor_number == 0 or orb.floor_index == floor_number):
+			result.append(orb)
+	return result
+
+
+func _on_orb_collected(orb: XpOrb) -> void:
+	_grant_xp(orb.value)
+
+
+func _grant_xp(amount: int) -> void:
+	if run == null or amount <= 0:
+		return
+	run.add_xp(amount)
+	xp_collected.emit(amount)
+
+
+func _vacuum_orbs(floor_number: int) -> void:
+	for orb in orbs(floor_number):
+		orb.vacuum()
+
+
+## Liegende Orbs sofort gutschreiben (Ebene geräumt und verlassen, Rundenende).
+func _credit_orbs(floor_number: int) -> void:
+	for orb in orbs(floor_number):
+		pickups.remove_child(orb)
+		orb.queue_free()
+		_grant_xp(orb.value)
+
+
+func credit_remaining_orbs() -> void:
+	_credit_orbs(0)
+
+
+func _suspend_orbs(floor_number: int) -> void:
+	for orb in orbs(floor_number):
+		orb.visible = false
+		orb.process_mode = Node.PROCESS_MODE_DISABLED
+
+
+func _discard_orbs(floor_number: int) -> void:
+	for orb in orbs(floor_number):
+		pickups.remove_child(orb)
+		orb.queue_free()
+
+
+func _clear_orbs() -> void:
+	for node in pickups.get_children():
+		pickups.remove_child(node)
+		node.queue_free()
+
+
+## Ebene 1 geräumt: Anspruch auf ein Floor-Upgrade. Die Luke öffnet erst nach der Auswahl.
+func _on_upper_floor_cleared() -> void:
+	reward_pending = true
+	clear_projectiles()
+	if descent == Descent.FLOOR_1:
+		descent = Descent.FLOOR_1_CLEARED
+		_finish_stats(EncounterStats.Outcome.CLEARED)
+		_vacuum_orbs(1)
+		get_tree().create_timer(reward_delay, false, true).timeout.connect(_offer_reward.bind(_generation, reward_delay))
+	else:
+		# Der Spieler fällt bereits (Clear im selben Moment): Belohnung bleibt, Auswahl nach der Landung.
+		_credit_orbs(1)
+		_grant_xp(_left_floor_xp)
+		_left_floor_xp = 0
+	floor_cleared.emit(1)
+
+
+## Auswahl anbieten, sobald der Spieler sicher steht (nicht im Fall) und die Orbs eingesammelt sind
+## (spätestens nach reward_max_delay, Rest wird gutgeschrieben). true = Auswahl angezeigt.
+func _offer_reward(generation: int, waited: float = INF) -> bool:
+	if generation != _generation or run == null or not reward_pending or reward_offered:
+		return false
+	if encounter != Encounter.RUNNING or descent == Descent.DROPPING:
+		return false
+	if descent == Descent.FLOOR_1_CLEARED and not orbs(1).is_empty():
+		if waited < reward_max_delay:
+			get_tree().create_timer(0.1, false, true).timeout.connect(_offer_reward.bind(generation, waited + 0.1))
+			return false
+		_credit_orbs(1)
+	reward_choices = run.roll_upgrade_choices(3)
+	if reward_choices.is_empty():
+		_finish_reward()  # Pool erschöpft: nichts zu wählen
+		return false
+	reward_offered = true
+	floor_reward_offered.emit(reward_choices)
+	return true
+
+
+## Pflichtauswahl anwenden: genau ein Upgrade, danach Luke öffnen bzw. Kampf auf Ebene 2 starten.
+func choose_floor_reward(id: StringName) -> bool:
+	if run == null or not reward_offered or not reward_choices.has(id):
+		return false
+	run.add_upgrade(id)
+	_finish_reward()
+	return true
+
+
+func _finish_reward() -> void:
+	reward_pending = false
+	reward_offered = false
+	reward_choices.clear()
+	if descent == Descent.FLOOR_1_CLEARED:
+		hatch.open()
+	elif descent == Descent.FLOOR_2 and encounter == Encounter.RUNNING:
+		player.protect_from_combat(landing_protection)  # Landeschutz beginnt mit dem Kampfstart
+		_activate_current_combatants()
+
+
+func _activate_current_combatants() -> void:
+	for c in combatants():
+		if not bool(c.get("is_defeated")):
+			c.set("target", player)
 
 
 func _on_enemy_swing_started() -> void:

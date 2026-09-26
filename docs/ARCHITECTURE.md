@@ -159,6 +159,15 @@ M2D.1 (nur Darstellung): Ebene 2 ist im Abstieg physisch aktiv, aber bis zum Üb
 
 Treffer laufen über `receive_hit(hit: HitInfo) -> bool` (Player, Dummy, Scrapling, Funkenwerfer); `HitInfo.source_name` hält die Quelle lesbar, auch wenn sie später entfernt wird. Keine gemeinsame Actor-Basisklasse, kein KI-Framework; Werte in `resources/tuning/scrapling_tuning.tres` und `resources/weapons/scrapling_cleaver.tres`.
 
+## Run-Progression M3A
+
+- `RunState` (`scripts/run/run_state.gd`, RefCounted): Level, XP, Punkte, Ränge, Upgrades, seedbarer RNG, Signale (`xp_changed`, `leveled_up`, `attributes_changed`, `upgrades_changed`) sowie reine Berechnungsfunktionen der Modifikatoren. Besitzer ist die Arena (`TrainingArena.run`); jeder Neustart im Abstieg erzeugt eine neue Instanz, andere Szenarien haben `run == null`.
+- `PlayerController.set_run()` / `apply_run_modifiers()`: setzt aus Basis (`tuning`, `weapon.data`) + Run die effektiven Werte neu (Max-HP, Tempo-/Beschleunigungsfaktor, Dodge-Abklingzeit, Waffenmodifikatoren). Momentum und Kinetische Erholung hängen am ersten erfolgreichen Treffer pro `swing_id`.
+- `WeaponController`: Laufzeitmodifikatoren (`speed_multiplier`, `damage_multiplier`, `knockback_multiplier`, `arc_bonus_degrees`, `range_bonus`) über `data`; Phasendauern, Treffersektor, HitInfo, Schwungspur und Telegraph nutzen die effektiven Werte. Gegnerwaffen bleiben neutral.
+- `XpOrb` (`scripts/run/xp_orb.gd`): positionsbasiert, keine Physik; Knoten `Pickups` in der Arena. Die Arena erzeugt Orbs in `_on_combatant_defeated`, schreibt beim Einsammeln gut und verwaltet Sog/Verfall/Gutschrift bei Clear und Ebenenwechsel.
+- Floor-Clear-Belohnung: Arena-Zustand `reward_pending`/`reward_offered`/`reward_choices`, Signal `floor_reward_offered`; `Main` zeigt `FloorRewardScreen` und ruft `choose_floor_reward()`. Die Luke öffnet erst danach; nach einer Landung mit offener Belohnung werden Ebene-2-Gegner erst nach der Auswahl aktiv.
+- UI: `Hud.bind_run()` (Level, XP-Leiste, STATS-Button mit Badge, Level-Up-Einblendung), `StatsScreen` und `FloorRewardScreen` (CanvasLayer, im Code aufgebaut, pausieren und lösen Eingaben), `LevelUpBurst` (VFX). Neue Eingabeaktion `stats` (C, Controller Back).
+
 ## Produktionsasset-Integration später
 
 Siehe `ASSET_PIPELINE.md`. Grundvertrag:

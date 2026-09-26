@@ -33,6 +33,8 @@ var _base_min_follow_height: float = 0.0
 @onready var hud: Hud = $HUD
 @onready var pause_menu: PauseMenu = $PauseMenu
 @onready var result_overlay: EncounterOverlay = $EncounterOverlay
+@onready var stats_screen: StatsScreen = $StatsScreen
+@onready var reward_screen: FloorRewardScreen = $FloorRewardScreen
 
 
 func _ready() -> void:
@@ -63,11 +65,16 @@ func _ready() -> void:
 	_base_min_follow_height = camera_rig.min_follow_height
 	arena.descent_started.connect(_on_descent_started)
 	arena.floor_landed.connect(_on_floor_landed)
+	arena.run_started.connect(_on_run_started)
+	arena.floor_reward_offered.connect(_on_floor_reward_offered)
 	arena.setup(player)
 	camera_rig.target = player
 	camera_rig.snap_to_target()
 	hud.bind(player, arena)
 	hud.pause_pressed.connect(pause_menu.open)
+	hud.stats_pressed.connect(open_stats)
+	stats_screen.closed.connect(_on_modal_closed)
+	reward_screen.chosen.connect(_on_reward_chosen)
 	pause_menu.reset_requested.connect(_on_restart_requested)
 	pause_menu.mode_toggle_requested.connect(toggle_mode)
 	pause_menu.profile_toggle_requested.connect(toggle_profile)
@@ -85,7 +92,10 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("debug_reset"):
+	if event.is_action_pressed("stats"):
+		open_stats()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("debug_reset"):
 		restart()
 	elif event.is_action_pressed("debug_toggle_overlay"):
 		hud.toggle_debug()
@@ -140,6 +150,8 @@ func _on_restart_requested() -> void:
 
 func _on_arena_restarted() -> void:
 	_result_generation += 1  # verwirft eine noch ausstehende Ergebnisanzeige
+	stats_screen.dismiss()
+	reward_screen.dismiss()
 	camera_rig.min_follow_height = _base_min_follow_height
 	result_overlay.hide_result()
 	pause_menu.blocked = false
@@ -163,7 +175,12 @@ func _show_result(victory: bool, generation: int) -> void:
 	pause_menu.blocked = true
 	InputRouter.release_all()
 	get_tree().paused = true  # keine Welt-Eingaben hinter der Ergebnisanzeige
+	arena.credit_remaining_orbs()  # noch fliegende Orbs des letzten Floors zählen
 	var summary := arena.last_stats.to_line() if arena.last_stats != null else ""
+	if arena.run != null:
+		var run := arena.run
+		summary += "\nLevel %d · Attributspunkte %d verteilt / %d offen · Upgrades: %s" % [run.player_level,
+				run.spent_points(), run.unspent_attribute_points, run.upgrade_names()]
 	result_overlay.show_result(victory, TrainingArena.scenario_name(arena.mode), summary)
 
 
@@ -199,3 +216,53 @@ func _on_descent_started(_regular: bool, _landing_point: Vector3) -> void:
 func _on_floor_landed(fall_damage: float) -> void:
 	arena.add_effect(IMPACT_SCENE.instantiate() as Node3D, player.global_position + Vector3.UP * 0.2)
 	camera_rig.add_shake(1.0 if fall_damage > 0.0 else 0.5, 0.14)
+
+
+# --- Run-Progression (M3A) ----------------------------------------------------
+
+func _on_run_started(run: RunState) -> void:
+	hud.bind_run(run)
+	if run != null:
+		run.leveled_up.connect(_on_level_up)
+
+
+## Level-Up unterbricht nichts: nur Einblendung (HUD) und Effekt am Spieler.
+func _on_level_up(_levels: int, _level: int) -> void:
+	var burst := LevelUpBurst.new()
+	burst.follow = player
+	arena.add_effect(burst, player.global_position)
+
+
+## Stats nur im laufenden Abstieg, mit Boden unter den Füßen, ohne anderes Overlay und nie im Fall/Übergang.
+func can_open_stats() -> bool:
+	if arena.run == null or arena.encounter != TrainingArena.Encounter.RUNNING or get_tree().paused:
+		return false
+	if stats_screen.is_open() or reward_screen.is_open() or result_overlay.is_open() or pause_menu.is_open():
+		return false
+	if arena.descent == TrainingArena.Descent.DROPPING:
+		return false
+	return player.is_targetable() and player.state != PlayerController.State.FALLING and player.is_on_floor()
+
+
+func open_stats() -> bool:
+	if not can_open_stats():
+		return false
+	pause_menu.blocked = true
+	stats_screen.open(arena.run, player)
+	return true
+
+
+func _on_floor_reward_offered(choices: Array[StringName]) -> void:
+	stats_screen.dismiss()
+	pause_menu.close()
+	pause_menu.blocked = true
+	reward_screen.open(choices)
+
+
+func _on_reward_chosen(id: StringName) -> void:
+	arena.choose_floor_reward(id)
+	_on_modal_closed()
+
+
+func _on_modal_closed() -> void:
+	pause_menu.blocked = result_overlay.is_open()

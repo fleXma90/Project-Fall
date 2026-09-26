@@ -120,6 +120,13 @@ M2A ist ein begrenzter Teilmeilenstein: genau ein aktiver Nahkampfgegner (Scrapl
 - **Darstellung (M2D.1/M2D.2):** Nur die aktuelle Ebene ist sichtbar; darunter neutrale Tiefe (Dunkelheit, Glutnester, Funken). Der Übergang ist an die Fallhöhe gekoppelt (nicht an Zeit): Ebene 1 samt zurückgelassenen Gegnern steigt bis 6 m nach oben weg und löst sich auf; Ebene 2 taucht überlappend auf, sobald Ebene 1 zu ≈80 % aufgelöst ist, und ist vor der Landung vollständig da. Nebel und Tiefe wandern stetig mit. Übergang ≈ 0.8 s, Kamera folgt.
 - **Prototyp-Regeln (nicht final):** Ebene-2-Sturz = Niederlage nur mangels Ebene 3; 12 Sturzschaden ist Testwert; 0.75 s Landeschutz später durch sichere Aktivierung ersetzen.
 
+## Run-Modifikatoren — M3A (umgesetzt)
+
+- Nur im Abstieg und nur für den Spieler: Stärke/Hammerkopf skalieren Hammerschaden, Wucht/Einschlag das Knockback-Tempo (Dauer unverändert), Tempo alle drei Hammerphasen proportional (Rang 0 exakt 0.26/0.12/0.42 s, Rang 8 ≈ 0.21/0.10/0.34 s), Weiter Schwung/Langer Griff Bogen und Reichweite. Die Richtungsregel (M1.1) und Attack-Hold bleiben unverändert.
+- Beweglichkeit und Momentum skalieren Lauftempo samt Beschleunigung/Abbremsung (gleiche Zeit bis Vollgas und Stopp). Dodge-Tempo, -Dauer und iFrames bleiben gleich; Erholung/Kinetische Erholung verändern nur die Dodge-Abklingzeit.
+- Gegnerangriffe, erhaltener Knockback, Landeschutz (0.75 s) und Sturzschaden (12) bleiben unverändert.
+- Details und Werte: `RUN_PROGRESSION.md`.
+
 ## Nicht im Umfang
 
 Weitere Gegnertypen, dritte Ebene, Run-Struktur, Charge/Sprung, Combo-/Heavy-/Ausdauersysteme.

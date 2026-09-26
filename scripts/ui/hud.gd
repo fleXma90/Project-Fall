@@ -3,6 +3,8 @@ extends CanvasLayer
 ## Minimal-HUD: HP oben links, Pause oben rechts, optionale Debuganzeige.
 
 signal pause_pressed
+## M3A: STATS-Button (Touch/Maus) gedrückt.
+signal stats_pressed
 
 var _player: PlayerController = null
 var _arena: TrainingArena = null
@@ -12,6 +14,12 @@ var _rate_timer: float = 0.0
 ## Abstieg: kurzer Hinweis nach der Landung (Sturzschaden bzw. regulärer Abstieg).
 var _landing_note: String = ""
 var _landing_note_left: float = 0.0
+## M3A: Run-Anzeige (nur Abstieg) und gebündelte Level-Up-Einblendung.
+var _run: RunState = null
+var _level_up_count: int = 0
+var _level_up_left: float = 0.0
+var _stats_style_normal: StyleBox
+var _stats_style_badge: StyleBox
 
 @onready var _safe_root: Control = $SafeRoot
 @onready var _hp_bar: ProgressBar = $SafeRoot/HpPanel/Margin/VBox/HpBar
@@ -19,10 +27,18 @@ var _landing_note_left: float = 0.0
 @onready var _pause_button: Button = $SafeRoot/PauseButton
 @onready var _debug_label: Label = $SafeRoot/DebugLabel
 @onready var _encounter_label: Label = $SafeRoot/EncounterLabel
+@onready var _progress_panel: Control = $SafeRoot/ProgressPanel
+@onready var _level_label: Label = $SafeRoot/ProgressPanel/Margin/HBox/LevelLabel
+@onready var _xp_bar: ProgressBar = $SafeRoot/ProgressPanel/Margin/HBox/XpBar
+@onready var _stats_button: Button = $SafeRoot/ProgressPanel/Margin/HBox/StatsButton
+@onready var _level_up_label: Label = $SafeRoot/LevelUpLabel
 
 
 func _ready() -> void:
 	_pause_button.pressed.connect(pause_pressed.emit)
+	_stats_button.pressed.connect(stats_pressed.emit)
+	_stats_style_normal = _stats_button.get_theme_stylebox("normal")
+	_stats_style_badge = _stats_button.get_theme_stylebox("pressed")
 	get_viewport().size_changed.connect(_apply_safe_area)
 	_apply_safe_area()
 
@@ -39,6 +55,66 @@ func bind(player: PlayerController, arena: TrainingArena) -> void:
 func _on_floor_landed(fall_damage: float) -> void:
 	_landing_note = "Sturzschaden %d" % int(fall_damage) if fall_damage > 0.0 else "Abstieg durch die Luke"
 	_landing_note_left = 2.5
+
+
+## Run anzeigen (null = kein Run: Level/XP/STATS ausgeblendet, andere Szenarien unverändert).
+func bind_run(run: RunState) -> void:
+	if _run != null:
+		if _run.xp_changed.is_connected(_on_xp_changed):
+			_run.xp_changed.disconnect(_on_xp_changed)
+		if _run.attributes_changed.is_connected(_on_run_changed):
+			_run.attributes_changed.disconnect(_on_run_changed)
+		if _run.leveled_up.is_connected(show_level_up):
+			_run.leveled_up.disconnect(show_level_up)
+	_run = run
+	_level_up_left = 0.0
+	_level_up_count = 0
+	_level_up_label.visible = false
+	_progress_panel.visible = run != null
+	if run != null:
+		run.xp_changed.connect(_on_xp_changed)
+		run.attributes_changed.connect(_on_run_changed)
+		run.leveled_up.connect(show_level_up)
+	_on_run_changed()
+
+
+func _on_xp_changed(_current: int, _to_next: int, _level: int) -> void:
+	_on_run_changed()
+
+
+func _on_run_changed() -> void:
+	if _run == null:
+		return
+	_level_label.text = "LV %d" % _run.player_level
+	_xp_bar.max_value = RunState.xp_to_next(_run.player_level)
+	_xp_bar.value = _run.current_xp
+	var points := _run.unspent_attribute_points
+	_stats_button.text = "STATS +%d" % points if points > 0 else "STATS"
+	# Dezenter Hinweis statt Blinken: grüner Rahmen, solange Punkte offen sind.
+	_stats_button.add_theme_stylebox_override("normal", _stats_style_badge if points > 0 else _stats_style_normal)
+	_stats_button.add_theme_stylebox_override("hover", _stats_style_badge if points > 0 else _stats_style_normal)
+
+
+func stats_button_text() -> String:
+	return _stats_button.text
+
+
+func is_level_up_visible() -> bool:
+	return _level_up_label.visible
+
+
+## Kurze Einblendung ohne Pause; schnelle Folge-Level-Ups werden zusammengefasst.
+func show_level_up(levels: int, _level: int) -> void:
+	_level_up_count = (_level_up_count if _level_up_left > 0.0 else 0) + levels
+	if _level_up_count == 1:
+		_level_up_label.text = "LEVEL UP!
++1 ATTRIBUTSPUNKT"
+	else:
+		_level_up_label.text = "LEVEL UP ×%d!
++%d ATTRIBUTSPUNKTE" % [_level_up_count, _level_up_count]
+	_level_up_left = 1.8
+	_level_up_label.visible = true
+	_level_up_label.modulate.a = 1.0
 
 
 func toggle_debug() -> void:
@@ -64,6 +140,12 @@ func _physics_process(_delta: float) -> void:
 func _process(delta: float) -> void:
 	_rate_timer += delta
 	_landing_note_left = maxf(_landing_note_left - delta, 0.0)
+	if _level_up_left > 0.0:
+		_level_up_left = maxf(_level_up_left - delta, 0.0)
+		_level_up_label.modulate.a = clampf(_level_up_left / 0.4, 0.0, 1.0)
+		if _level_up_left == 0.0:
+			_level_up_label.visible = false
+			_level_up_count = 0
 	if _rate_timer >= 1.0:
 		_physics_rate = roundi(_physics_ticks / _rate_timer)
 		_physics_ticks = 0
@@ -122,7 +204,7 @@ func _update_encounter_label() -> void:
 		scenario += "  ·  Ebene %d" % _arena.floor_index()
 		match _arena.descent:
 			TrainingArena.Descent.FLOOR_1_CLEARED:
-				enemies_text = "geräumt – Luke offen"
+				enemies_text = "geräumt – Upgrade wählen" if _arena.reward_pending else "geräumt – Luke offen"
 			TrainingArena.Descent.DROPPING:
 				enemies_text = "Sturz …"
 		if _landing_note_left > 0.0:

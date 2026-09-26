@@ -19,6 +19,14 @@ enum Phase { IDLE, WINDUP, ACTIVE, RECOVERY }
 ## Zusätzlicher Suchradius für Zielkörper (die exakte Prüfung nutzt deren hit_radius).
 @export var query_margin: float = 0.8
 
+## Laufzeit-Modifikatoren (M3A-Run-Progression). `data` bleibt unverändert; neutrale Werte = Basisverhalten.
+## Tempo skaliert alle drei Phasen proportional (Dauer / speed_multiplier).
+var speed_multiplier: float = 1.0
+var damage_multiplier: float = 1.0
+var knockback_multiplier: float = 1.0
+var arc_bonus_degrees: float = 0.0
+var range_bonus: float = 0.0
+
 var phase: Phase = Phase.IDLE
 var swing_id: int = 0
 ## Schlagrichtung (XZ, normalisiert). Während WINDUP per aim() nachführbar, ab ACTIVE fixiert.
@@ -70,6 +78,39 @@ func cancel() -> void:
 	_phase_time = 0.0
 
 
+func reset_modifiers() -> void:
+	speed_multiplier = 1.0
+	damage_multiplier = 1.0
+	knockback_multiplier = 1.0
+	arc_bonus_degrees = 0.0
+	range_bonus = 0.0
+
+
+func effective_range() -> float:
+	return data.attack_range + range_bonus
+
+
+func effective_arc() -> float:
+	return data.arc_degrees + arc_bonus_degrees
+
+
+func effective_damage() -> float:
+	return data.damage * damage_multiplier
+
+
+func effective_knockback_speed() -> float:
+	return data.knockback_speed * knockback_multiplier
+
+
+## Effektive Gesamtdauer eines Swings (Basis 0.26 + 0.12 + 0.42 s beim Hammer).
+func total_duration() -> float:
+	return data.total_duration() / speed_multiplier
+
+
+func phase_duration(p: Phase) -> float:
+	return _phase_duration(p)
+
+
 ## Fortschritt der aktuellen Phase 0..1.
 func phase_progress() -> float:
 	var duration := _phase_duration(phase)
@@ -117,7 +158,7 @@ func _query_hits() -> void:
 	if data == null or attack_origin == null:
 		return
 	var origin := attack_origin.global_position
-	_query_shape.radius = data.attack_range + query_margin
+	_query_shape.radius = effective_range() + query_margin
 	var params := PhysicsShapeQueryParameters3D.new()
 	params.shape = _query_shape
 	params.transform = Transform3D(Basis.IDENTITY, origin)
@@ -138,7 +179,7 @@ func _query_hits() -> void:
 		var radius_value: Variant = target.get("hit_radius")
 		var target_radius: float = radius_value if radius_value is float else 0.4
 		if not is_in_sector(origin, direction, target.global_position, target_radius,
-				data.attack_range, data.arc_degrees, data.max_height_difference):
+				effective_range(), effective_arc(), data.max_height_difference):
 			continue
 		var hit := _make_hit(origin, target.global_position)
 		# Nur ein angewendeter Treffer verbraucht das Ziel für diesen Swing. Abgewehrte Treffer
@@ -160,8 +201,8 @@ func _make_hit(origin: Vector3, target_pos: Vector3) -> HitInfo:
 		push = (radial.normalized() + direction).normalized()
 	var hit := HitInfo.new()
 	hit.swing_id = swing_id
-	hit.damage = data.damage
-	hit.knockback_velocity = push * data.knockback_speed
+	hit.damage = effective_damage()
+	hit.knockback_velocity = push * effective_knockback_speed()
 	hit.knockback_duration = data.knockback_duration
 	hit.attack_direction = direction
 	hit.source = get_parent() as Node3D
@@ -177,11 +218,11 @@ static func _flat_direction(value: Vector3, fallback: Vector3) -> Vector3:
 func _phase_duration(p: Phase) -> float:
 	match p:
 		Phase.WINDUP:
-			return data.windup
+			return data.windup / speed_multiplier
 		Phase.ACTIVE:
-			return data.active
+			return data.active / speed_multiplier
 		Phase.RECOVERY:
-			return data.recovery
+			return data.recovery / speed_multiplier
 	return INF
 
 

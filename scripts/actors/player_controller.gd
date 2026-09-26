@@ -55,6 +55,12 @@ var _visual_state := PlayerVisualState.new()
 var _protected_until: float = -1.0
 var _fall_settle_active: bool = false
 var _fall_settle_time: float = 0.12
+## M3A: Run-Progression des aktuellen Abstiegs (null = Basiswerte, alle anderen Szenarien).
+## Effektive Werte = Basis aus `tuning`/`weapon.data` × Run-Modifikatoren; Ressourcen bleiben unverändert.
+var run: RunState = null
+## Momentum-Kern: verbleibende Dauer des Laufbonus (kein Stapeln, Treffer erneuert nur die Dauer).
+var momentum_left: float = 0.0
+var _last_rewarded_swing: int = -1
 
 @onready var visual_root: Node3D = $VisualRoot
 @onready var weapon: WeaponController = $WeaponController
@@ -81,6 +87,7 @@ func refresh_visual() -> void:
 
 func _physics_process(delta: float) -> void:
 	_clock += delta
+	momentum_left = maxf(momentum_left - delta, 0.0)
 	if state == State.OUT:
 		return
 	var cam := get_viewport().get_camera_3d()
@@ -174,7 +181,7 @@ func _update_actions(delta: float) -> void:
 func _start_attack() -> void:
 	state = State.ATTACK
 	# Voller Takt ab Start: Dodge-Abbruch beschleunigt den nächsten Angriff nicht.
-	_attack_ready_time = _clock + weapon.data.total_duration()
+	_attack_ready_time = _clock + weapon.total_duration()
 	# Kein Einrasten: Der Körper dreht während WINDUP weiter weich zum Facing, der Sektor folgt ihm.
 	weapon.start_swing(body_forward())
 	attack_direction = weapon.direction
@@ -186,12 +193,12 @@ func _start_dodge() -> void:
 	dodge_direction = move_direction.normalized() if move_direction.length_squared() > 0.0001 else facing_direction
 	state = State.DODGE
 	_dodge_elapsed = 0.0
-	_dodge_ready_time = _clock + tuning.dodge_cooldown
+	_dodge_ready_time = _clock + dodge_cooldown()
 
 
 func _end_dodge() -> void:
 	state = State.MOVE
-	var horizontal := Vector2(velocity.x, velocity.z).limit_length(tuning.move_speed)
+	var horizontal := Vector2(velocity.x, velocity.z).limit_length(move_speed())
 	velocity.x = horizontal.x
 	velocity.z = horizontal.y
 
@@ -203,6 +210,62 @@ func is_invulnerable() -> bool:
 
 func is_targetable() -> bool:
 	return state != State.OUT and state != State.DEAD
+
+
+# --- Run-Progression (M3A) ----------------------------------------------------
+
+## Run übernehmen (null = Basiswerte). Setzt Laufzeitboni zurück und wendet die Modifikatoren neu an.
+func set_run(state_value: RunState) -> void:
+	if run != null:
+		if run.attributes_changed.is_connected(apply_run_modifiers):
+			run.attributes_changed.disconnect(apply_run_modifiers)
+		if run.upgrades_changed.is_connected(apply_run_modifiers):
+			run.upgrades_changed.disconnect(apply_run_modifiers)
+	run = state_value
+	momentum_left = 0.0
+	_last_rewarded_swing = -1
+	if run != null:
+		run.attributes_changed.connect(apply_run_modifiers)
+		run.upgrades_changed.connect(apply_run_modifiers)
+	apply_run_modifiers()
+
+
+## Waffenmodifikatoren und Max-HP aus Basis + Run neu berechnen (nie aufmultiplizieren). Heilt nicht.
+func apply_run_modifiers() -> void:
+	weapon.reset_modifiers()
+	if run != null:
+		weapon.speed_multiplier = run.attack_speed_multiplier()
+		weapon.damage_multiplier = run.damage_multiplier()
+		weapon.knockback_multiplier = run.knockback_multiplier()
+		weapon.arc_bonus_degrees = run.arc_bonus()
+		weapon.range_bonus = run.range_bonus()
+	hp = minf(hp, max_hp())
+	health_changed.emit(hp, max_hp())
+
+
+func max_hp() -> float:
+	return tuning.max_hp + (run.max_hp_bonus() if run != null else 0.0)
+
+
+## Gemeinsamer Faktor für Laufgeschwindigkeit, Beschleunigung und Abbremsung (Bewegungsgefühl bleibt gleich).
+func move_factor() -> float:
+	var factor := run.move_multiplier() if run != null else 1.0
+	if momentum_left > 0.0 and run != null and run.has_upgrade(RunState.MOMENTUM_CORE):
+		factor *= RunState.MOMENTUM_SPEED
+	return factor
+
+
+func move_speed() -> float:
+	return tuning.move_speed * move_factor()
+
+
+func dodge_cooldown() -> float:
+	return tuning.dodge_cooldown * (run.dodge_cooldown_multiplier() if run != null else 1.0)
+
+
+## Restliche Dodge-Abklingzeit (0 = bereit).
+func dodge_cooldown_left() -> float:
+	return maxf(_dodge_ready_time - _clock, 0.0)
 
 
 ## Landeschutz nach einem Ebenenwechsel: nur gegen Kampftreffer, nicht gegen fehlenden Boden.
@@ -219,7 +282,7 @@ func apply_fall_damage(amount: float) -> void:
 	if not is_targetable() or amount <= 0.0:
 		return
 	hp = maxf(hp - amount, 0.0)
-	health_changed.emit(hp, tuning.max_hp)
+	health_changed.emit(hp, max_hp())
 	if _visual != null:
 		_visual.play_hit(Vector3.ZERO)
 	fall_damaged.emit(amount)
@@ -255,7 +318,7 @@ func receive_hit(hit: HitInfo) -> bool:
 		hit_evaded.emit(hit)
 		return false
 	hp = maxf(hp - hit.damage, 0.0)
-	health_changed.emit(hp, tuning.max_hp)
+	health_changed.emit(hp, max_hp())
 	if state == State.ATTACK:
 		weapon.cancel()
 	_knockback_velocity = Vector3(hit.knockback_velocity.x, 0.0, hit.knockback_velocity.z)
@@ -292,16 +355,17 @@ func _apply_horizontal_velocity(delta: float) -> void:
 			horizontal = Vector2(_knockback_velocity.x, _knockback_velocity.z) * (_knockback_left / _knockback_duration)
 	elif state == State.DEAD:
 		if is_on_floor():
-			horizontal = horizontal.move_toward(Vector2.ZERO, tuning.deceleration * delta)
+			horizontal = horizontal.move_toward(Vector2.ZERO, tuning.deceleration * move_factor() * delta)
 	elif state == State.DODGE:
 		horizontal = Vector2(dodge_direction.x, dodge_direction.z) * tuning.dodge_speed
 	else:
-		var speed := tuning.move_speed
+		var factor := move_factor()
+		var speed := tuning.move_speed * factor
 		if state == State.ATTACK:
 			speed *= tuning.attack_move_multiplier
 		var target := Vector2(move_direction.x, move_direction.z) * speed
 		if is_on_floor():
-			var rate := tuning.acceleration if target != Vector2.ZERO else tuning.deceleration
+			var rate := (tuning.acceleration if target != Vector2.ZERO else tuning.deceleration) * factor
 			horizontal = horizontal.move_toward(target, rate * delta)
 		elif target != Vector2.ZERO:
 			# In der Luft nur schwache Steuerung; ohne Eingabe bleibt der Schwung erhalten.
@@ -350,7 +414,7 @@ func _push_visual_state() -> void:
 		return
 	var s := _visual_state
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
-	s.move_amount = horizontal.length() / maxf(tuning.move_speed, 0.01)
+	s.move_amount = horizontal.length() / maxf(move_speed(), 0.01)
 	s.local_move_direction = global_basis.inverse() * horizontal.normalized() if horizontal.length() > 0.05 else Vector3.ZERO
 	s.grounded = is_on_floor()
 	s.falling = state == State.FALLING
@@ -410,6 +474,7 @@ func respawn_at(spawn: Transform3D) -> void:
 	_dodge_ready_time = _clock
 	_protected_until = -1.0
 	_fall_settle_active = false
+	momentum_left = 0.0
 	visual_root.visible = true
 	weapon.visible = true
 	if _visual != null:
@@ -419,10 +484,17 @@ func respawn_at(spawn: Transform3D) -> void:
 
 ## Vollständiger Reset (Training/Begegnung): Respawn plus volle HP.
 func reset_full(spawn: Transform3D) -> void:
-	hp = tuning.max_hp
-	health_changed.emit(hp, tuning.max_hp)
+	hp = max_hp()
+	health_changed.emit(hp, max_hp())
 	respawn_at(spawn)
 
 
-func _on_weapon_hit(target: Node3D, point: Vector3, _hit: HitInfo) -> void:
+func _on_weapon_hit(target: Node3D, point: Vector3, hit: HitInfo) -> void:
+	# Upgrade-Effekte nur beim ersten erfolgreichen Treffer eines Swings (Mehrfachtreffer zählen nicht extra).
+	if run != null and hit.swing_id != _last_rewarded_swing:
+		_last_rewarded_swing = hit.swing_id
+		if run.has_upgrade(RunState.MOMENTUM_CORE):
+			momentum_left = RunState.MOMENTUM_DURATION
+		if run.has_upgrade(RunState.KINETIC_RECOVERY):
+			_dodge_ready_time = maxf(_dodge_ready_time - RunState.KINETIC_DODGE_REFUND, _clock)
 	hit_landed.emit(target, point)

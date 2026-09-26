@@ -55,7 +55,7 @@ func _process(_delta: float) -> void:
 	var origin := enemy.global_position + Vector3.UP * ground_offset
 	global_transform = Transform3D(Basis(Vector3.UP, atan2(-weapon.direction.x, -weapon.direction.z)), origin)
 
-	var outer := weapon.data.attack_range + target_radius
+	var outer := weapon.effective_range() + target_radius
 	var inner := 0.25
 	if fill > 0.0:
 		_draw_region(inner, lerpf(inner, outer, fill), Color(color.r, color.g, color.b, 0.35 + 0.25 * fill))
@@ -64,7 +64,7 @@ func _process(_delta: float) -> void:
 
 ## Halber Trefferwinkel (rad) für einen Zielmittelpunkt im Abstand d.
 func _half_angle(d: float) -> float:
-	return deg_to_rad(weapon.data.arc_degrees) * 0.5 + atan2(target_radius, d)
+	return deg_to_rad(weapon.effective_arc()) * 0.5 + atan2(target_radius, d)
 
 
 func _point(d: float, u: float) -> Vector3:

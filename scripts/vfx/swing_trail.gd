@@ -39,7 +39,7 @@ func _process(_delta: float) -> void:
 			reveal = pow(weapon.phase_progress(), 0.8)
 			alpha = 0.9
 		WeaponController.Phase.RECOVERY:
-			var faded := weapon.phase_progress() * weapon.data.recovery / fade_time
+			var faded := weapon.phase_progress() * weapon.phase_duration(WeaponController.Phase.RECOVERY) / fade_time
 			reveal = 1.0
 			alpha = 0.9 * (1.0 - clampf(faded, 0.0, 1.0))
 	if alpha <= 0.01 or reveal <= 0.01:
@@ -50,13 +50,13 @@ func _process(_delta: float) -> void:
 	global_transform = Transform3D(Basis(Vector3.UP, atan2(-weapon.direction.x, -weapon.direction.z)),
 			owner_node.global_position if owner_node != null else weapon.global_position)
 
-	var half := weapon.data.arc_degrees * 0.5
-	var outer := weapon.data.attack_range
+	var half := weapon.effective_arc() * 0.5
+	var outer := weapon.effective_range()
 	var inner := maxf(outer - ribbon_width, 0.2)
 	_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
 	for i in segments + 1:
 		var u := float(i) / float(segments) * reveal
-		var angle := deg_to_rad(half - weapon.data.arc_degrees * u)  # rechts (+) → links (-)
+		var angle := deg_to_rad(half - weapon.effective_arc() * u)  # rechts (+) → links (-)
 		var dir := Vector3(sin(angle), 0.0, -cos(angle))
 		var height := lerpf(height_start, height_end, u)
 		# Neuester Teil des Bogens am hellsten.

@@ -16,6 +16,9 @@ Dieser Vertrag definiert Verhalten, nicht eine konkrete Klasse.
 | Benommenheitsprofil A/B (M2B) | Pausenmenü | Pausenmenü | Pausenmenü |
 | Funkenwerfer-Schussprofil Standard/Scharf (M2C) | Pausenmenü | Pausenmenü | Pausenmenü |
 | Neustart nach Sieg/Niederlage (M2A) | Button, Enter oder R | A auf fokussiertem Button | Button |
+| Stats öffnen/schließen (M3A, nur Abstieg) | C; Esc schließt nur Stats | View/Back; B schließt | STATS-Button; X/Schließen |
+| Punkt investieren (M3A) | Klick/Enter auf „+“ | Fokus + A | „+“ antippen |
+| Floor-Upgrade wählen (M3A, Pflicht) | Klick/Enter auf Karte | Fokus + A (kein Überspringen) | Karte antippen |
 
 ## Camera-relative Bewegung
 

@@ -104,6 +104,18 @@ func _ready() -> void:
 		"test_z8_lower_enemies_walk_around_shaft",
 		"test_z9_upper_enemy_fall_never_reaches_floor2",
 		"test_z10_diag_edge_fall_is_vertical",
+		"test_r1_run_lifecycle_and_other_modes",
+		"test_r2_xp_orbs_values_and_magnet",
+		"test_r3_xp_curve_carry_and_multi_level",
+		"test_r4_attribute_investment_rules",
+		"test_r5_attribute_effects_on_runtime_values",
+		"test_r6_upgrade_effects_and_combination",
+		"test_r7_level_up_live_without_pause",
+		"test_r8_stats_screen_input_and_pause",
+		"test_r9_floor_reward_flow_and_determinism",
+		"test_r10_early_fall_keeps_progress_without_reward",
+		"test_r11_clear_during_fall_defers_reward",
+		"test_r12_new_run_resets_everything",
 	]
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--only="):
@@ -121,11 +133,11 @@ func _ready() -> void:
 			mode = TrainingArena.Mode.GROUP
 		elif test_name.begins_with("test_x") or test_name.begins_with("test_y") or test_name.contains("_mixed_"):
 			mode = TrainingArena.Mode.MIXED
-		elif test_name.begins_with("test_z"):
+		elif test_name.begins_with("test_z") or test_name.begins_with("test_r"):
 			mode = TrainingArena.Mode.DESCENT  # Abstieg mit dem aktuellen Standard (Profil B, Schuss scharf)
-		var profile: int = TrainingArena.StunProfile.SHORT if test_name.ends_with("_b") or test_name.begins_with("test_x") or test_name.begins_with("test_z") else TrainingArena.StunProfile.BASE
+		var profile: int = TrainingArena.StunProfile.SHORT if test_name.ends_with("_b") or test_name.begins_with("test_x") or test_name.begins_with("test_z") or test_name.begins_with("test_r") else TrainingArena.StunProfile.BASE
 		# Funkenwerfer-Schussprofil: bestehende Tests ausdrücklich Standard, test_y…/…_sharp… Scharf.
-		var shot: int = TrainingArena.ShotProfile.SHARP if test_name.begins_with("test_y") or test_name.begins_with("test_z") or test_name.contains("_sharp") else TrainingArena.ShotProfile.STANDARD
+		var shot: int = TrainingArena.ShotProfile.SHARP if test_name.begins_with("test_y") or test_name.begins_with("test_z") or test_name.begins_with("test_r") or test_name.contains("_sharp") else TrainingArena.ShotProfile.STANDARD
 		if test_name.contains("default_profile"):
 			profile = -1
 			shot = -1
@@ -2523,10 +2535,13 @@ func test_d11_diag_mixed_dodge_reaction_window() -> void:
 
 # --- Abstieg: zwei Ebenen (test_z…) ---------------------------------------------------------
 
+## Ebene 1 räumen und (M3A) das Pflicht-Upgrade wählen, damit sich die Luke öffnet.
 func _kill_upper_floor() -> void:
 	for c in arena.combatants():
 		c.call("receive_hit", _lethal(200.0))
 	await _ticks(2)
+	await _choose_reward(0)
+	await _ticks(40)
 
 
 func _await_descent(target: TrainingArena.Descent, max_ticks: int = 240) -> bool:
@@ -2617,7 +2632,10 @@ func test_z2_hatch_opens_after_clear_and_walk_in_without_damage() -> void:
 	_check(not arena.hatch.is_open, "Luke vor dem Räumen offen")
 	arena.combatants()[2].call("receive_hit", _lethal(200.0))
 	await _ticks(2)
-	_check(arena.hatch.is_open and arena.descent == TrainingArena.Descent.FLOOR_1_CLEARED, "Luke öffnet nach dem Räumen nicht")
+	_check(not arena.hatch.is_open and arena.descent == TrainingArena.Descent.FLOOR_1_CLEARED, "Luke vor der Upgrade-Wahl offen")
+	await _choose_reward(0)
+	await _ticks(40)
+	_check(arena.hatch.is_open and arena.descent == TrainingArena.Descent.FLOOR_1_CLEARED, "Luke öffnet nach der Upgrade-Wahl nicht")
 	_check(finished.is_empty() and arena.encounter == TrainingArena.Encounter.RUNNING, "Räumen von Ebene 1 beendet die Begegnung")
 	_check(summaries.size() == 1 and summaries[0].outcome == EncounterStats.Outcome.CLEARED and summaries[0].scenario == "Abstieg · Ebene 1",
 			"Zusammenfassung Ebene 1 nicht „geräumt“")
@@ -2980,3 +2998,652 @@ func test_z10_diag_edge_fall_is_vertical() -> void:
 	print("    Kantensturz (Diagnose):")
 	for row in rows:
 		print("      " + row)
+
+
+# --- M3A: Run-Progression (test_r…) ------------------------------------------------------------
+
+func _reward_screen() -> FloorRewardScreen:
+	return main.get("reward_screen") as FloorRewardScreen
+
+
+func _stats_screen() -> StatsScreen:
+	return main.get("stats_screen") as StatsScreen
+
+
+func _hud() -> Hud:
+	return main.get("hud") as Hud
+
+
+## Neuer Run mit festem Seed (reproduzierbare Upgrade-Auswahl).
+func _new_run(seed_value: int = 4242) -> void:
+	arena.run_seed = seed_value
+	arena.restart()
+	await _ticks(10)  # Spieler steht wieder auf dem Boden
+
+
+## Wartet auf die Pflichtauswahl und wählt die Karte index (Luke öffnet danach).
+func _choose_reward(index: int = 0) -> StringName:
+	for i in 120:
+		if _reward_screen().is_open():
+			break
+		await _ticks(1)
+	if not _reward_screen().is_open():
+		_check(false, "Upgrade-Auswahl erscheint nicht")
+		return &""
+	var id: StringName = _reward_screen().choices[index]
+	_reward_screen().choose(id)
+	await _ticks(2)
+	return id
+
+
+func _orb_total(floor_number: int = 0) -> int:
+	var total := 0
+	for orb in arena.orbs(floor_number):
+		total += orb.value
+	return total
+
+
+## Spieler auf alle liegenden Orbs zulaufen lassen (Positionssprünge, kein Magnet-Test).
+func _collect_all_orbs() -> void:
+	for i in 40:
+		var list := arena.orbs()
+		if list.is_empty():
+			return
+		var orb := list[0]
+		if orb.state == XpOrb.State.REST:
+			_place_player(orb.global_position, Vector3.FORWARD)
+			player.global_position.y = arena.lower_floor_height() + 0.05 if arena.floor_index() == 2 else 0.05
+		await _ticks(10)
+
+
+func _key_event(physical: Key, pressed: bool) -> void:
+	var e := InputEventKey.new()
+	e.physical_keycode = physical
+	e.keycode = physical
+	e.pressed = pressed
+	_push(e)
+
+
+func _joy_button_event(button: JoyButton, pressed: bool) -> void:
+	var e := InputEventJoypadButton.new()
+	e.device = 0
+	e.button_index = button
+	e.pressed = pressed
+	_push(e)
+
+
+func test_r1_run_lifecycle_and_other_modes() -> void:
+	await _new_run()
+	var run := arena.run
+	_check(run != null and player.run == run, "Abstieg ohne Run")
+	_check(run.player_level == 1 and run.current_xp == 0 and run.unspent_attribute_points == 0 and run.upgrades.is_empty(),
+			"Run startet nicht auf Basis")
+	for attribute in RunState.ATTRIBUTES:
+		_check(run.rank(attribute) == 0, "%s nicht Rang 0" % attribute)
+	_check(is_equal_approx(player.max_hp(), 100.0) and is_equal_approx(player.hp, 100.0), "Start-HP nicht Basis")
+	var w := player.weapon
+	_check(is_equal_approx(w.speed_multiplier, 1.0) and is_equal_approx(w.damage_multiplier, 1.0) and is_equal_approx(w.knockback_multiplier, 1.0)
+			and is_zero_approx(w.arc_bonus_degrees) and is_zero_approx(w.range_bonus), "Waffenmodifikatoren nicht neutral")
+	var panel := _hud().get_node("SafeRoot/ProgressPanel") as Control
+	_check(panel.visible and _hud().stats_button_text() == "STATS", "Level/XP/STATS im Abstieg nicht sichtbar")
+	# Andere Szenarien: kein Run, keine XP, kein Stats-Button.
+	for m in [TrainingArena.Mode.MIXED, TrainingArena.Mode.GROUP, TrainingArena.Mode.COMBAT, TrainingArena.Mode.TRAINING]:
+		main.call("set_mode", m)
+		await _ticks(2)
+		_check(arena.run == null and player.run == null and not panel.visible, "%s mit Run-Progression" % TrainingArena.scenario_name(m))
+		_check(not main.call("open_stats") and not _stats_screen().is_open(), "Stats in %s öffnbar" % TrainingArena.scenario_name(m))
+		if m != TrainingArena.Mode.TRAINING:
+			arena.combatants()[0].call("receive_hit", _lethal(200.0))
+			await _ticks(30)
+			_check(arena.orbs().is_empty(), "XP-Orbs in %s" % TrainingArena.scenario_name(m))
+	main.call("set_mode", TrainingArena.Mode.DESCENT)
+	await _ticks(2)
+	_check(arena.run != null and arena.run != run and arena.run.total_xp == 0, "Rückkehr zum Abstieg ohne neuen Run")
+
+
+func test_r2_xp_orbs_values_and_magnet() -> void:
+	await _new_run()
+	_calm_mixed()
+	var run := arena.run
+	_place_player(Vector3(-5.0, 0, 3.5), Vector3.FORWARD)
+	var s1 := arena.active_enemies[0]
+	_put_enemy(s1, Vector3(3.0, 0, -2.5), Vector3.LEFT)
+	await _ticks(2)
+	s1.receive_hit(_lethal(200.0))
+	await _ticks(3)
+	var orbs := arena.orbs(1)
+	_check(orbs.size() == 3 and _orb_total(1) == 30, "Scrapling wirft nicht 30 XP in Orbs ab (%d Orbs, %d XP)" % [orbs.size(), _orb_total(1)])
+	_check(run.total_xp == 0, "XP beim Kill statt beim Einsammeln gutgeschrieben")
+	await _ticks(60)
+	_check(run.total_xp == 0 and arena.orbs(1).size() == 3, "Orbs werden ohne Nähe eingesammelt")
+	for orb in arena.orbs(1):
+		var local := arena.upper_floor.to_local(orb.global_position)
+		_check(arena.upper_floor.contains(Vector2(local.x, local.z)), "Orb liegt nicht auf der Ebene")
+	# Magnet: in die Nähe laufen genügt (nicht exakt darauf).
+	var near := arena.orbs(1)[0].global_position + Vector3(1.6, 0, 0)
+	_place_player(near, Vector3.LEFT)
+	player.global_position.y = 0.05
+	for i in 90:
+		await _ticks(1)
+		if run.total_xp >= 10:
+			break
+	_check(run.total_xp >= 10, "Magnet zieht Orb in 1.6 m Abstand nicht an")
+	await _collect_all_orbs()
+	_check(run.total_xp == 30, "Scrapling nicht genau 30 XP (%d)" % run.total_xp)
+	# Funkenwerfer 40 XP; nochmaliges Besiegen gibt nichts.
+	var sp := arena.active_shooters[0]
+	sp.receive_hit(_lethal(200.0))
+	await _ticks(3)
+	_check(_orb_total(1) == 40 and arena.orbs(1).size() == 4, "Funkenwerfer wirft nicht 40 XP ab (%d)" % _orb_total(1))
+	sp.fall_out()
+	sp.receive_hit(_lethal(200.0))
+	await _ticks(3)
+	_check(_orb_total(1) == 40, "Bereits besiegter Gegner gibt erneut XP")
+	await _collect_all_orbs()
+	_check(run.total_xp == 70, "Summe nach Funkenwerfer falsch (%d)" % run.total_xp)
+	# Kantensieg: gleicher Wert, Orbs an der letzten Bodenposition sicher auf der Ebene.
+	var s2 := arena.active_enemies[1]
+	_put_enemy(s2, Vector3(6.3, 0, -1.0), Vector3.RIGHT)
+	await _ticks(5)
+	s2.global_position = Vector3(7.4, 0.02, -1.0)
+	for i in 90:
+		await _ticks(1)
+		if s2.is_defeated:
+			break
+	await _ticks(3)
+	_check(s2.is_defeated and s2.last_defeat_reason == Scrapling.DefeatReason.FALL, "Vorbereitung: kein Kantensieg")
+	_check(_orb_total(1) == 30, "Kantensieg gibt nicht dieselben 30 XP (%d)" % _orb_total(1))
+	await _ticks(30)
+	for orb in arena.orbs(1):
+		var local := arena.upper_floor.to_local(orb.global_position)
+		_check(arena.upper_floor.is_safe_point(Vector2(local.x, local.z), 0.2), "Orb nach Kantensieg nicht sicher auf der Ebene (%s)" % orb.global_position)
+
+
+func test_r3_xp_curve_carry_and_multi_level() -> void:
+	var run := RunState.new(7)
+	_check(RunState.xp_to_next(1) == 60 and RunState.xp_to_next(2) == 90 and RunState.xp_to_next(3) == 120 and RunState.xp_to_next(4) == 150,
+			"XP-Formel falsch")
+	var events: Array = []
+	run.leveled_up.connect(func(levels: int, level: int) -> void: events.append([levels, level]))
+	_check(run.add_xp(59) == 0 and run.player_level == 1 and run.current_xp == 59, "Unter der Schwelle falsch")
+	_check(run.add_xp(1) == 1 and run.player_level == 2 and run.current_xp == 0 and run.unspent_attribute_points == 1, "Level-Up an der Schwelle falsch")
+	_check(run.add_xp(40) == 0 and run.current_xp == 40, "Übertrag falsch")
+	# Ein Ereignis, mehrere Level-Ups: 40 + 50 → L3 (Rest 0), + 120 → L4, + 5 Rest.
+	_check(run.add_xp(175) == 2 and run.player_level == 4 and run.current_xp == 5 and run.unspent_attribute_points == 3,
+			"Mehrere Level-Ups falsch (L%d, XP %d, Punkte %d)" % [run.player_level, run.current_xp, run.unspent_attribute_points])
+	_check(events == [[1, 2], [2, 4]], "Level-Up-Signale falsch: %s" % [events])
+	for attribute in RunState.ATTRIBUTES:
+		_check(run.rank(attribute) == 0, "Level-Up erhöht Attribut automatisch")
+
+
+func test_r4_attribute_investment_rules() -> void:
+	await _new_run()
+	var run := arena.run
+	_check(not run.invest(RunState.POWER) and run.rank(RunState.POWER) == 0, "Kauf ohne Punkte möglich")
+	run.add_xp(5000)
+	var points := run.unspent_attribute_points
+	_check(points >= 9, "Vorbereitung: zu wenig Punkte (%d)" % points)
+	_check(run.invest(RunState.HASTE) and run.unspent_attribute_points == points - 1 and run.rank(RunState.HASTE) == 1, "Rang kostet nicht genau 1 Punkt")
+	for i in 10:
+		run.invest(RunState.POWER)
+	_check(run.rank(RunState.POWER) == RunState.MAX_RANK and run.unspent_attribute_points == points - 1 - 8, "Maximalrang 8 nicht eingehalten")
+	_check(not run.can_invest(RunState.POWER), "Kauf über Rang 8 möglich")
+	# Stats-Screen: Plus-Button deaktiviert bei Max-Rang; ein Punkt pro Frame.
+	_calm_mixed()
+	await _ticks(2)
+	_check(main.call("open_stats") and _stats_screen().is_open() and get_tree().paused, "Stats öffnen nicht")
+	_check(_stats_screen().plus_button(RunState.POWER).disabled, "Plus bei Rang 8 aktiv")
+	var before := run.unspent_attribute_points
+	_stats_screen().invest(RunState.AGILITY)
+	_stats_screen().invest(RunState.AGILITY)
+	_check(run.unspent_attribute_points == before - 1 and run.rank(RunState.AGILITY) == 1, "Mehrere Punkte in einem Frame investiert")
+	_check(_stats_screen().value_text(RunState.AGILITY).begins_with("4.7") and _stats_screen().value_text(RunState.AGILITY).contains("→ 4.83"), "Vorschau Beweglichkeit falsch: %s" % _stats_screen().value_text(RunState.AGILITY))
+	_stats_screen().close()
+	await _ticks(2)
+	_check(not get_tree().paused and run.unspent_attribute_points == before - 1, "Punkte nach Schließen verändert")
+
+
+func test_r5_attribute_effects_on_runtime_values() -> void:
+	await _new_run()
+	_calm_mixed()
+	var run := arena.run
+	run.add_xp(20000)
+	var w := player.weapon
+	# Stärke: nur Spielerhammer.
+	run.invest(RunState.POWER)
+	_check(is_equal_approx(w.effective_damage(), 21.0), "Stärke 1 ≠ 21 Schaden (%.2f)" % w.effective_damage())
+	_check(is_equal_approx(arena.enemies[0].weapon.effective_damage(), arena.enemies[0].weapon.data.damage), "Stärke verändert Gegnerwaffe")
+	# Vitalität: Max-HP ohne Heilung.
+	player.receive_hit(_lethal(55.0))
+	await _ticks(30)
+	var maxima: Array[float] = []
+	player.health_changed.connect(func(_c: float, m: float) -> void: maxima.append(m))
+	run.invest(RunState.VITALITY)
+	_check(is_equal_approx(player.hp, 45.0) and is_equal_approx(player.max_hp(), 110.0) and maxima.has(110.0),
+			"Vitalität heilt oder erhöht Max-HP nicht (HP %.0f / %.0f)" % [player.hp, player.max_hp()])
+	# Tempo: alle Phasen proportional.
+	for i in 8:
+		run.invest(RunState.HASTE)
+	var m := 1.0 + 0.03 * 8
+	_check(is_equal_approx(w.phase_duration(WeaponController.Phase.WINDUP), 0.26 / m) and is_equal_approx(w.phase_duration(WeaponController.Phase.ACTIVE), 0.12 / m)
+			and is_equal_approx(w.phase_duration(WeaponController.Phase.RECOVERY), 0.42 / m) and is_equal_approx(w.total_duration(), 0.8 / m), "Tempo skaliert Phasen nicht proportional")
+	# Echter Schwung: ACTIVE beginnt zum effektiven Windup-Ende, Fortschritt synchron.
+	_gamepad_mode()
+	_place_player(Vector3(0, 0, 1.5), Vector3.FORWARD)
+	await _ticks(3)
+	var ticks := 0
+	var active_tick := -1
+	var idle_tick := -1
+	await _single_rt_attack()
+	ticks = 2
+	for i in 90:
+		await _ticks(1)
+		ticks += 1
+		if active_tick < 0 and w.phase == WeaponController.Phase.ACTIVE:
+			active_tick = ticks
+		if idle_tick < 0 and ticks > 3 and w.phase == WeaponController.Phase.IDLE:
+			idle_tick = ticks
+			break
+	_check(absi(active_tick - roundi(0.26 / m * 60.0)) <= 2 and absi(idle_tick - roundi(0.8 / m * 60.0)) <= 2,
+			"Schwungtiming nicht effektiv (ACTIVE Tick %d, Ende Tick %d)" % [active_tick, idle_tick])
+	# Beweglichkeit: Tempo +10 %, Zeit bis Höchsttempo und Stoppzeit unverändert.
+	var base_ticks := await _ticks_to_top_speed()
+	for i in 4:
+		run.invest(RunState.AGILITY)
+	var agile_ticks := await _ticks_to_top_speed()
+	_check(is_equal_approx(player.move_speed(), 4.6 * 1.1), "Beweglichkeit 4 ≠ +10 %")
+	_check(absi(base_ticks.x - agile_ticks.x) <= 1 and absi(base_ticks.y - agile_ticks.y) <= 1,
+			"Beschleunigungs-/Stoppgefühl verändert (Basis %s, Beweglich %s)" % [base_ticks, agile_ticks])
+	_check(is_equal_approx(player.tuning.dodge_speed, 10.0), "Dodge-Tempo verändert")
+	# Wucht: Knockback-Tempo, nicht Dauer.
+	run.invest(RunState.IMPACT)
+	run.invest(RunState.IMPACT)
+	_check(is_equal_approx(w.effective_knockback_speed(), 8.0 * 1.12) and is_equal_approx(w.data.knockback_duration, 0.28), "Wucht falsch")
+	# Erholung: nur Dodge-Abklingzeit.
+	for i in 3:
+		run.invest(RunState.RECOVERY)
+	_check(is_equal_approx(player.dodge_cooldown(), 0.70 * 0.88) and is_equal_approx(player.tuning.dodge_duration, 0.18)
+			and is_equal_approx(player.tuning.dodge_iframe_start, 0.02) and is_equal_approx(player.tuning.dodge_iframe_end, 0.14), "Erholung falsch")
+	# Keine Ressourcen verändert.
+	var hammer := load("res://resources/weapons/hammer.tres") as WeaponData
+	var tuning := load("res://resources/tuning/player_tuning.tres") as PlayerTuning
+	_check(is_equal_approx(hammer.damage, 20.0) and is_equal_approx(hammer.windup, 0.26) and is_equal_approx(hammer.knockback_speed, 8.0)
+			and is_equal_approx(tuning.move_speed, 4.6) and is_equal_approx(tuning.max_hp, 100.0) and is_equal_approx(tuning.dodge_cooldown, 0.70),
+			"Shared-Ressourcen verändert")
+
+
+## Ticks bis Höchsttempo (x) und bis Stillstand nach Loslassen (y) beim Laufen nach rechts.
+func _ticks_to_top_speed() -> Vector2i:
+	_place_player(Vector3(-4.0, 0, 1.5), Vector3.RIGHT)
+	player.global_position.y = 0.05
+	await _ticks(3)
+	_set_stick(_stick_for_world(Vector3.RIGHT))
+	var up := 0
+	for i in 60:
+		await _ticks(1)
+		up += 1
+		if Vector2(player.velocity.x, player.velocity.z).length() >= player.move_speed() - 0.01:
+			break
+	_set_stick(Vector2.ZERO)
+	var down := 0
+	for i in 60:
+		await _ticks(1)
+		down += 1
+		if Vector2(player.velocity.x, player.velocity.z).length() < 0.01:
+			break
+	return Vector2i(up, down)
+
+
+func test_r6_upgrade_effects_and_combination() -> void:
+	await _new_run()
+	_calm_mixed()
+	var run := arena.run
+	var w := player.weapon
+	run.add_xp(150)  # Level 3 → 2 Punkte
+	run.invest(RunState.POWER)
+	run.invest(RunState.POWER)
+	run.add_upgrade(RunState.DENSE_HEAD)
+	_check(is_equal_approx(w.effective_damage(), 20.0 * 1.10 * 1.15), "Stärke × Hammerkopf falsch (%.3f)" % w.effective_damage())
+	run.add_upgrade(RunState.HEAVY_IMPACT)
+	_check(is_equal_approx(w.effective_knockback_speed(), 8.0 * 1.30), "Schwerer Einschlag falsch")
+	run.add_upgrade(RunState.WIDE_SWING)
+	_check(is_equal_approx(w.effective_arc(), 135.0), "Weiter Schwung falsch")
+	run.add_upgrade(RunState.LONG_GRIP)
+	_check(is_equal_approx(w.effective_range(), 2.15), "Langer Griff falsch")
+	_check(not run.add_upgrade(RunState.LONG_GRIP) and run.upgrades.size() == 4, "Upgrade doppelt wählbar")
+	# Momentum-Kern: erster Treffer eines Swings, Bonus stapelt nicht, Treffer erneuert nur die Dauer.
+	run.add_upgrade(RunState.MOMENTUM_CORE)
+	var base_speed := player.move_speed()
+	var hit := _hammer_hit(Vector3.FORWARD)
+	hit.swing_id = 100
+	player.call("_on_weapon_hit", arena.enemies[0], Vector3.ZERO, hit)
+	_check(is_equal_approx(player.momentum_left, 1.5) and is_equal_approx(player.move_speed(), base_speed * 1.2), "Momentum nicht aktiv")
+	player.call("_on_weapon_hit", arena.enemies[1], Vector3.ZERO, hit)  # zweites Ziel im selben Swing
+	_check(is_equal_approx(player.move_speed(), base_speed * 1.2), "Momentum stapelt")
+	await _ticks(30)
+	var hit2 := _hammer_hit(Vector3.FORWARD)
+	hit2.swing_id = 101
+	player.call("_on_weapon_hit", arena.enemies[0], Vector3.ZERO, hit2)
+	_check(is_equal_approx(player.momentum_left, 1.5) and is_equal_approx(player.move_speed(), base_speed * 1.2), "Momentum wird nicht erneuert")
+	await _ticks(95)
+	_check(is_zero_approx(player.momentum_left) and is_equal_approx(player.move_speed(), base_speed), "Momentum endet nicht nach 1.5 s")
+	# Kinetische Erholung: −0.20 s Dodge-Abklingzeit, höchstens einmal pro Swing, nicht unter 0.
+	run.add_upgrade(RunState.KINETIC_RECOVERY)
+	_gamepad_mode()
+	_joy_axis(JOY_AXIS_TRIGGER_LEFT, 1.0)
+	await _ticks(2)
+	_joy_axis(JOY_AXIS_TRIGGER_LEFT, 0.0)
+	await _ticks(1)
+	var left := player.dodge_cooldown_left()
+	var hit3 := _hammer_hit(Vector3.FORWARD)
+	hit3.swing_id = 102
+	player.call("_on_weapon_hit", arena.enemies[0], Vector3.ZERO, hit3)
+	player.call("_on_weapon_hit", arena.enemies[1], Vector3.ZERO, hit3)
+	_check(left > 0.3 and absf(player.dodge_cooldown_left() - (left - 0.2)) < 0.001, "Kinetische Erholung nicht genau einmal −0.20 s (%.3f → %.3f)" % [left, player.dodge_cooldown_left()])
+	await _ticks(40)
+	var hit4 := _hammer_hit(Vector3.FORWARD)
+	hit4.swing_id = 103
+	player.call("_on_weapon_hit", arena.enemies[0], Vector3.ZERO, hit4)
+	_check(player.dodge_cooldown_left() >= 0.0, "Dodge-Abklingzeit unter 0")
+	# Echter Treffer löst Momentum aus.
+	player.momentum_left = 0.0
+	var target := arena.enemies[0]
+	_put_enemy(target, Vector3(0, 0, 0.3), Vector3.BACK)
+	_place_player(Vector3(0, 0, 1.6), Vector3.FORWARD)
+	player.global_position.y = 0.05
+	await _ticks(3)
+	await _single_rt_attack()
+	for i in 40:
+		await _ticks(1)
+		if player.momentum_left > 0.0:
+			break
+	_check(player.momentum_left > 0.0, "Echter Hammertreffer löst Momentum nicht aus")
+	var hammer := load("res://resources/weapons/hammer.tres") as WeaponData
+	_check(is_equal_approx(hammer.arc_degrees, 110.0) and is_equal_approx(hammer.attack_range, 1.9), "Upgrades verändern die Hammer-Ressource")
+
+
+func test_r7_level_up_live_without_pause() -> void:
+	await _new_run()
+	var run := arena.run
+	var effects_before := arena.effects.get_child_count()
+	run.add_xp(60)
+	await _ticks(2)
+	_check(not get_tree().paused and not _stats_screen().is_open() and not _reward_screen().is_open(), "Level-Up pausiert oder öffnet ein Fenster")
+	_check(_hud().is_level_up_visible() and _hud().stats_button_text() == "STATS +1", "Level-Up-Anzeige/Badge fehlt (%s)" % _hud().stats_button_text())
+	_check(arena.effects.get_child_count() > effects_before, "Kein Level-Up-Effekt am Spieler")
+	var label := _hud().get_node("SafeRoot/ProgressPanel/Margin/HBox/LevelLabel") as Label
+	_check(label.text == "LV 2", "Levelanzeige falsch: %s" % label.text)
+	run.add_xp(90 + 120)
+	await _ticks(2)
+	var up_label := _hud().get_node("SafeRoot/LevelUpLabel") as Label
+	_check(_hud().stats_button_text() == "STATS +3" and up_label.text.contains("×3"), "Schnelle Level-Ups nicht zusammengefasst (%s / %s)" % [_hud().stats_button_text(), up_label.text])
+	# Gegner handeln weiter (keine Pause): ein verfolgender Scrapling bewegt sich.
+	var e := arena.active_enemies[0]
+	var before := e.global_position
+	run.add_xp(150)
+	await _ticks(20)
+	_check(e.global_position.distance_to(before) > 0.05 or e.state == Scrapling.State.ATTACK, "Welt steht nach Level-Up")
+	await _ticks(130)
+	_check(not _hud().is_level_up_visible(), "Level-Up-Anzeige bleibt stehen")
+
+
+func test_r8_stats_screen_input_and_pause() -> void:
+	await _new_run()
+	_calm_mixed()
+	arena.run.add_xp(60)
+	await _ticks(2)
+	var bolt := arena.spawn_projectile(Vector3(-5.0, 0.85, -3.0), Vector3.RIGHT, arena.sparker.tuning, "Test")
+	await _ticks(2)
+	# Taste C öffnet, Welt und Projektile stehen.
+	_key_event(KEY_C, true)
+	_key_event(KEY_C, false)
+	await _ticks(2)
+	_check(_stats_screen().is_open() and get_tree().paused, "C öffnet Stats nicht")
+	var bolt_pos := bolt.global_position
+	var enemy_pos := arena.active_enemies[0].global_position
+	await _ticks(20)
+	_check(bolt.global_position == bolt_pos and arena.active_enemies[0].global_position == enemy_pos, "Welt/Projektil läuft hinter Stats weiter")
+	# Esc schließt Stats, öffnet aber keine Pause.
+	_key_event(KEY_ESCAPE, true)
+	_key_event(KEY_ESCAPE, false)
+	await _ticks(2)
+	var pause := main.get("pause_menu") as PauseMenu
+	_check(not _stats_screen().is_open() and not pause.is_open() and not get_tree().paused, "Esc schließt Stats nicht sauber (Pause %s)" % pause.is_open())
+	# Controller View/Back öffnet und schließt.
+	_joy_button_event(JOY_BUTTON_BACK, true)
+	_joy_button_event(JOY_BUTTON_BACK, false)
+	await _ticks(2)
+	_check(_stats_screen().is_open(), "View/Back öffnet Stats nicht")
+	_joy_button_event(JOY_BUTTON_BACK, true)
+	_joy_button_event(JOY_BUTTON_BACK, false)
+	await _ticks(2)
+	_check(not _stats_screen().is_open() and not get_tree().paused, "View/Back schließt Stats nicht")
+	# RT wird bei offenen Stats gedrückt und gehalten: nach dem Schließen kein Angriff, bis neu gedrückt wird.
+	_gamepad_mode()
+	await _ticks(2)
+	_check(main.call("open_stats"), "Stats per Controller nicht öffnbar")
+	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _ticks(2)
+	_stats_screen().close()
+	await _ticks(20)
+	_check(player.state != PlayerController.State.ATTACK and not player.weapon.is_busy(), "Gehaltener RT löst nach dem Schließen einen Angriff aus")
+	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	await _ticks(2)
+	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _ticks(3)
+	_joy_axis(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	_check(player.state == PlayerController.State.ATTACK or player.weapon.is_busy(), "Neuer RT-Druck greift nicht an")
+	await _ticks(60)
+	# Maus/Touch-Klick auf STATS: öffnet, ohne Angriff.
+	InputRouter._switch_source(InputRouter.Source.KEYBOARD_MOUSE)
+	var button := _hud().get_node("SafeRoot/ProgressPanel/Margin/HBox/StatsButton") as Button
+	var center := button.get_global_rect().get_center()
+	_mouse_button(MOUSE_BUTTON_LEFT, true, center)
+	_mouse_button(MOUSE_BUTTON_LEFT, false, center)
+	await _ticks(2)
+	_check(_stats_screen().is_open(), "Klick auf STATS öffnet nicht")
+	_check(not player.weapon.is_busy(), "Klick auf STATS löst Angriff aus")
+	_stats_screen().close()
+	await _ticks(10)
+	_check(not player.weapon.is_busy() and player.state != PlayerController.State.ATTACK, "Angriff nach Stats-Klick")
+	# Touch-Zone: STATS-Button liegt außerhalb der Gameplay-Zonen.
+	var touch := main.get_node("TouchLayer/TouchControls") as TouchControls
+	_check(touch.zone_at(center) == InputRouter.TouchZone.NONE, "STATS-Button liegt in einer Touch-Gameplayzone")
+	# Im Fall nicht öffnbar.
+	player.global_position = Vector3(7.2, 0.05, 0.0)
+	player.velocity = Vector3.ZERO
+	var opened_in_fall := false
+	for i in 80:
+		await _ticks(1)
+		if arena.descent == TrainingArena.Descent.DROPPING or player.state == PlayerController.State.FALLING:
+			if main.call("open_stats"):
+				opened_in_fall = true
+				_stats_screen().close()
+		if arena.descent == TrainingArena.Descent.FLOOR_2:
+			break
+	_check(not opened_in_fall, "Stats im Fall/Übergang öffnbar")
+
+
+func test_r9_floor_reward_flow_and_determinism() -> void:
+	await _new_run(777)
+	_calm_mixed()
+	var offered: Array = []
+	arena.floor_reward_offered.connect(func(choices: Array[StringName]) -> void: offered.append(choices.duplicate()))
+	for c in arena.combatants():
+		c.call("receive_hit", _lethal(200.0))
+	await _ticks(2)
+	_check(arena.reward_pending and not arena.hatch.is_open and not _reward_screen().is_open(), "Luke offen oder Auswahl sofort statt nach Orb-Sog")
+	for i in 70:
+		await _ticks(1)
+		if _reward_screen().is_open():
+			break
+	_check(_reward_screen().is_open() and get_tree().paused and offered.size() == 1, "Auswahl erscheint nicht genau einmal")
+	_check(arena.run.total_xp == 100, "Orbs beim Räumen nicht eingesaugt (%d XP)" % arena.run.total_xp)
+	var choices: Array = offered[0]
+	var unique := {}
+	for id in choices:
+		unique[id] = true
+	_check(choices.size() == 3 and unique.size() == 3, "Nicht 3 unterschiedliche Optionen: %s" % [choices])
+	_check(not arena.hatch.is_open, "Luke vor der Auswahl offen")
+	# Kein Überspringen per Esc/B.
+	_key_event(KEY_ESCAPE, true)
+	_key_event(KEY_ESCAPE, false)
+	await _ticks(2)
+	var pause := main.get("pause_menu") as PauseMenu
+	_check(_reward_screen().is_open() and not pause.is_open(), "Auswahl per Esc übersprungen oder Pause geöffnet")
+	# Auswahl per Kartenklick (Controller-Fokus liegt auf der ersten Karte).
+	_check(_reward_screen().card(0).has_focus(), "Controller-Fokus fehlt auf der ersten Karte")
+	_reward_screen().card(1).pressed.emit()
+	await _ticks(2)
+	_check(arena.run.upgrades == [choices[1]] and not arena.reward_pending, "Auswahl wendet nicht genau ein Upgrade an")
+	await _ticks(40)
+	_check(arena.hatch.is_open and not get_tree().paused, "Luke nach der Auswahl nicht offen")
+	# Gleicher Seed → gleiche Auswahl.
+	await _new_run(777)
+	var again: Array[StringName] = arena.run.roll_upgrade_choices(3)
+	_check(again == Array(choices, TYPE_STRING_NAME, &"", null), "Seed nicht reproduzierbar: %s vs %s" % [again, choices])
+	# Pool: nie bereits besessene, bei Erschöpfung weniger statt Duplikate.
+	var run := arena.run
+	for id in [RunState.DENSE_HEAD, RunState.HEAVY_IMPACT, RunState.WIDE_SWING, RunState.LONG_GRIP]:
+		run.add_upgrade(id)
+	var rest := run.roll_upgrade_choices(3)
+	_check(rest.size() == 2 and not rest.has(RunState.DENSE_HEAD), "Erschöpfter Pool liefert Duplikate/Besessene: %s" % [rest])
+	# Letzter Floor: kein weiteres Upgrade.
+	await _new_run(777)
+	await _kill_upper_floor()
+	await _drop_through_hatch_open()
+	offered.clear()
+	for c in arena.combatants():
+		c.call("receive_hit", _lethal(200.0))
+	await _ticks(120)
+	_check(offered.is_empty() and arena.encounter == TrainingArena.Encounter.VICTORY, "Upgrade nach finalem Floor angeboten")
+
+
+## Durch die bereits offene Luke fallen (Auswahl bereits getroffen).
+func _drop_through_hatch_open() -> void:
+	player.global_position = arena.hatch.global_position + Vector3.UP * 0.05
+	player.velocity = Vector3.ZERO
+	await _await_descent(TrainingArena.Descent.FLOOR_2)
+	await _ticks(2)
+
+
+func test_r10_early_fall_keeps_progress_without_reward() -> void:
+	await _new_run()
+	_calm_mixed()
+	var run := arena.run
+	run.add_xp(60)
+	run.invest(RunState.POWER)
+	run.add_upgrade(RunState.LONG_GRIP)  # z. B. früher gewählt
+	var s1 := arena.active_enemies[0]
+	s1.receive_hit(_lethal(200.0))
+	await _ticks(3)
+	await _collect_all_orbs()
+	_check(run.total_xp == 90, "Vorbereitung: XP %d" % run.total_xp)
+	# Zweiter Kill: Orbs bleiben liegen, dann früher Sturz.
+	arena.active_enemies[1].receive_hit(_lethal(200.0))
+	await _ticks(3)
+	_place_player(Vector3(-5.0, 0, 4.0), Vector3.LEFT)
+	player.global_position = Vector3(-7.2, 0.05, 4.0)
+	player.velocity = Vector3.ZERO
+	var offered := [0]
+	arena.floor_reward_offered.connect(func(_c: Array[StringName]) -> void: offered[0] += 1)
+	await _await_descent(TrainingArena.Descent.FLOOR_2)
+	await _ticks(60)
+	_check(arena.descent == TrainingArena.Descent.FLOOR_2 and offered[0] == 0 and not arena.reward_pending, "Früher Sturz gibt Floor-Upgrade")
+	_check(run.total_xp == 90 and run.player_level == 2 and run.rank(RunState.POWER) == 1 and run.upgrades == [RunState.LONG_GRIP],
+			"Fortschritt nach frühem Sturz verändert (XP %d, L%d)" % [run.total_xp, run.player_level])
+	_check(arena.orbs(1).is_empty(), "Orbs der verlassenen Ebene bleiben bestehen")
+	_check(is_equal_approx(player.hp, 88.0), "Sturzschaden nicht 12 (HP %.0f)" % player.hp)
+	_check(is_equal_approx(player.weapon.effective_range(), 2.15) and is_equal_approx(player.weapon.effective_damage(), 21.0), "Modifikatoren nach Ebenenwechsel verändert")
+	# Floorwechsel wendet nichts mehrfach an.
+	_check(is_equal_approx(player.max_hp(), 100.0), "Max-HP nach Floorwechsel verändert")
+
+
+func test_r11_clear_during_fall_defers_reward() -> void:
+	await _new_run()
+	_calm_mixed()
+	arena.active_enemies[0].receive_hit(_lethal(200.0))
+	arena.active_shooters[0].receive_hit(_lethal(200.0))
+	await _ticks(3)
+	var last := arena.active_enemies[1]
+	_put_enemy(last, Vector3(6.2, 0, -1.0), Vector3.RIGHT)
+	await _ticks(3)
+	# Letzter Gegner fällt über die Kante, der Spieler gleichzeitig auf der anderen Seite.
+	last.global_position = Vector3(7.4, 0.02, -1.0)
+	player.global_position = Vector3(-7.2, 0.05, 0.0)
+	player.velocity = Vector3.ZERO
+	var offered := [0]
+	arena.floor_reward_offered.connect(func(_c: Array[StringName]) -> void: offered[0] += 1)
+	var screen_in_fall := false
+	for i in 200:
+		await _ticks(1)
+		if arena.descent == TrainingArena.Descent.DROPPING and _reward_screen().is_open():
+			screen_in_fall = true
+		if arena.descent == TrainingArena.Descent.FLOOR_2:
+			break
+	await _ticks(2)
+	_check(last.is_defeated, "Vorbereitung: letzter Gegner nicht besiegt")
+	_check(not screen_in_fall, "Upgrade-Auswahl mitten im Fall")
+	_check(offered[0] == 1 and _reward_screen().is_open() and get_tree().paused, "Belohnung nach der Landung nicht angeboten")
+	_check(arena.run.total_xp == 100, "XP des geräumten Floors nicht gutgeschrieben (%d)" % arena.run.total_xp)
+	for c in arena.combatants():
+		_check(c.get("target") == null, "%s aktiv vor der Auswahl" % c.name)
+	await _choose_reward(0)
+	_check(arena.run.upgrades.size() == 1 and not get_tree().paused, "Auswahl nach Landung nicht angewendet")
+	for c in arena.combatants():
+		_check(c.get("target") == player, "%s nach der Auswahl nicht aktiv" % c.name)
+	_check(not player.receive_hit(_lethal(1.0)), "Landeschutz beginnt nicht mit dem Kampfstart")
+
+
+func test_r12_new_run_resets_everything() -> void:
+	await _new_run()
+	_calm_mixed()
+	var run := arena.run
+	run.add_xp(400)
+	run.invest(RunState.VITALITY)
+	run.invest(RunState.HASTE)
+	run.add_upgrade(RunState.MOMENTUM_CORE)
+	player.momentum_left = 1.0
+	arena.active_enemies[0].receive_hit(_lethal(200.0))
+	await _ticks(3)
+	# Tod → Neustart.
+	player.receive_hit(_lethal(500.0))
+	await _ticks(70)
+	_check(arena.encounter == TrainingArena.Encounter.DEFEAT, "Vorbereitung: keine Niederlage")
+	main.call("restart")
+	await _ticks(3)
+	_assert_base_run("nach Tod", run)
+	# Ebene-2-Sturz → Neustart.
+	var run2 := arena.run
+	run2.add_xp(200)
+	await _drop_off_edge()
+	player.global_position = arena.lower_floor.to_global(Vector3(0, 0.05, -1.0))
+	await _ticks(120)
+	_check(arena.encounter == TrainingArena.Encounter.DEFEAT, "Vorbereitung: Ebene-2-Sturz keine Niederlage")
+	main.call("restart")
+	await _ticks(3)
+	_assert_base_run("nach Ebene-2-Sturz", run2)
+	# Profilwechsel startet ebenfalls einen neuen Run.
+	var run3 := arena.run
+	run3.add_xp(100)
+	main.call("toggle_profile")
+	await _ticks(2)
+	_assert_base_run("nach Profilwechsel", run3)
+	main.call("toggle_profile")
+	await _ticks(2)
+
+
+func _assert_base_run(context: String, old: RunState) -> void:
+	var run := arena.run
+	_check(run != null and run != old, "%s: kein neuer Run" % context)
+	if run == null:
+		return
+	_check(run.player_level == 1 and run.total_xp == 0 and run.unspent_attribute_points == 0 and run.spent_points() == 0 and run.upgrades.is_empty(),
+			"%s: Run nicht auf Basis" % context)
+	_check(is_equal_approx(player.max_hp(), 100.0) and is_equal_approx(player.hp, 100.0) and is_zero_approx(player.momentum_left), "%s: Spieler nicht auf Basis" % context)
+	var w := player.weapon
+	_check(is_equal_approx(w.total_duration(), 0.8) and is_equal_approx(w.effective_damage(), 20.0) and is_equal_approx(w.effective_range(), 1.9),
+			"%s: Waffe nicht auf Basis" % context)
+	_check(not arena.reward_pending and not _reward_screen().is_open() and not _stats_screen().is_open() and arena.orbs().is_empty(),
+			"%s: Belohnung/Screens/Orbs übrig" % context)
+	_check(_hud().stats_button_text() == "STATS", "%s: Badge nicht zurückgesetzt" % context)

@@ -365,6 +365,8 @@ func _register_actions() -> void:
 	_add_action("attack", [_mouse(MOUSE_BUTTON_LEFT)])
 	_add_action("dodge", [_key(KEY_SPACE), _mouse(MOUSE_BUTTON_RIGHT)])
 	_add_action("pause", [_key(KEY_ESCAPE), _joy_button(JOY_BUTTON_START)])
+	# M3A: Attribut-Screen (getrennt von der Pause).
+	_add_action("stats", [_key(KEY_C), _joy_button(JOY_BUTTON_BACK)])
 	_add_action("debug_reset", [_key(KEY_R)])
 	_add_action("debug_toggle_overlay", [_key(KEY_F3)])
 	_add_action("debug_toggle_touch", [_key(KEY_F2)])

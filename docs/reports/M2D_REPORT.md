@@ -2,7 +2,7 @@
 
 Datum: 25.09.2026  
 Umfang: Nutzerauftrag „wenn alle Gegner besiegt, öffnet sich ein kleines Portal oder Loch am Boden und man kann durch zur nächsten Ebene; in Ebene 1 wenn man runterfällt, kommt auch Ebene 2, aber mit Fallschaden“. Nutzerentscheidungen: Ebene 2 mit neuer Form + Mischkampf; Sturz von Ebene 2 = Niederlage; Commit später gemeinsam.  
-Status: implementiert inkl. M2D.1 (eine Ebene sichtbar) und M2D.2 (senkrechter Kantensturz, fließender Übergang), Prototyp mit Dummy-Assets, nicht committet  
+Status: implementiert inkl. M2D.1 (eine Ebene sichtbar) und M2D.2 (senkrechter Kantensturz, fließender Übergang), Prototyp mit Dummy-Assets; committet und gepusht als `13981ee` (GitHub `main`, 25.09.2026)  
 Nutzerabnahme: offen
 
 ## Spielbares Ergebnis
@@ -137,4 +137,4 @@ Nutzerfeedback: „Wenn man von der Kante fällt, soll man auf der nächsten Ebe
 
 ## Stopp
 
-Keine dritte Ebene, Run-Struktur, neue Gegnertypen, Upgrades oder Produktionsassets. Kein Commit/Push (Nutzerentscheidung: später gemeinsam).
+Keine dritte Ebene, Run-Struktur, neue Gegnertypen, Upgrades oder Produktionsassets. Commit und Push erfolgten später gemeinsam auf ausdrückliche Anweisung (`13981ee`).

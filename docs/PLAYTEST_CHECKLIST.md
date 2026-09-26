@@ -60,6 +60,18 @@ Kernfragen: Erzeugt der Schütze Positionierungsentscheidungen? Ist ein Schuss r
 
 Kernfragen: Lohnt sich das Räumen gegenüber dem Sprung (12 HP)? Ist die Luke klar erkennbar? Landet ein Kantensturz so sauber wie die Luke (senkrecht, kein schräger Zug)? M2D.1: Konkurriert die Tiefe unter der Ebene mit dem Kampf? Wirkt der Übergang (alte Ebene zieht weg → Tiefe → neue Ebene taucht auf) fließend, ohne Schnitt?
 
+## M3A-Run-Progression (Spieltest, Standardstart)
+
+1. Ebene 1 normal spielen: XP-Orbs einsammeln, XP-Leiste und Live-Level-Up beobachten.
+2. Punkte zunächst sparen: zählt das STATS-Badge korrekt hoch (+1, +2 …)?
+3. Stats mitten im Kampf öffnen (Button / C / View-Back), einen Punkt verteilen, schließen: Pause und Eingaben sauber?
+4. Ebene 1 räumen: Upgrade 1 aus 3 wählen, öffnet sich die Luke erst danach?
+5. Auf Ebene 2: Attribute und Upgrade weiterhin aktiv?
+6. Neuer Run: alles wieder Basis?
+7. Zweiter Versuch: ein, zwei Gegner besiegen, dann absichtlich herunterfallen: XP/Level/Punkte bleiben, kein Upgrade.
+
+Kernfragen: Lohnt sich das Räumen gegenüber dem Sprung? Stören die Orbs im Kampf, oder lohnt sich der Umweg dafür? Sind Level-Ups spürbar, ohne den Kampf zu unterbrechen?
+
 ## Automatisierbare M1-Regeln
 
 | ID | Verhalten |

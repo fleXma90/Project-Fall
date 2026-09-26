@@ -17,6 +17,8 @@ var _mixed_movie_only: bool = false
 ## Nur die Abstiegssequenz (--qa-descent) bzw. ein skriptgesteuerter Abstieg für die Videoaufnahme.
 var _descent_only: bool = false
 var _descent_movie_only: bool = false
+## Nur die M3A-Run-Sequenz (--qa-run): XP-Orbs, Level-Up, Stats, Floor-Upgrade.
+var _run_only: bool = false
 
 
 func _ready() -> void:
@@ -32,6 +34,8 @@ func _ready() -> void:
 			_descent_only = true
 		elif arg == "--qa-descent-movie":
 			_descent_movie_only = true
+		elif arg == "--qa-run":
+			_run_only = true
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(_out_dir))
 	main = MAIN_SCENE.instantiate()
 	# Die M1/M1.1-Sequenz läuft im Trainingsmodus, danach folgt die M2A-Kampfsequenz.
@@ -50,6 +54,9 @@ func _ready() -> void:
 		await _group_movie()
 	elif _mixed_movie_only:
 		await _mixed_movie()
+	elif _run_only:
+		print("QA window=%s visible_rect=%s" % [DisplayServer.window_get_size(), get_viewport().get_visible_rect().size])
+		await _run_sequence()
 	elif _descent_movie_only:
 		await _descent_movie()
 	elif _descent_only:
@@ -744,6 +751,7 @@ func _descent_sequence() -> void:
 			TrainingArena.Descent.keys()[arena.descent], arena.combatants().size(), arena.lower_combatants().size()])
 	# Ebene 1 räumen → Luke öffnet sich.
 	_descent_kill_current_floor()
+	await _qa_choose_reward(0)
 	await _seconds(0.7)
 	await _shot("54_hatch_open")
 	print("QA hatch open=%s descent=%s encounter=%s" % [arena.hatch.is_open, TrainingArena.Descent.keys()[arena.descent],
@@ -867,6 +875,11 @@ func _descent_movie() -> void:
 		if skip and arena.descent == TrainingArena.Descent.FLOOR_1:
 			_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
 			_set_stick(_stick_axes_for_world(Vector3.RIGHT))
+		elif (main.get("reward_screen") as FloorRewardScreen).is_open():
+			_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+			_set_stick(Vector2.ZERO)
+			await _seconds(1.2)
+			await _qa_choose_reward(0)
 		elif arena.descent == TrainingArena.Descent.FLOOR_1_CLEARED:
 			_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
 			var to := arena.hatch.global_position - player.global_position
@@ -885,3 +898,139 @@ func _descent_movie() -> void:
 			TrainingArena.Encounter.keys()[arena.encounter], int(player.hp)])
 	if arena.last_stats != null:
 		print("QA movie summary: %s" % arena.last_stats.to_line())
+
+
+# --- M3A: Run-Progression ------------------------------------------------------------
+
+## Wartet auf die Pflichtauswahl und wählt per Controller-Fokus (A) bzw. direkt die Karte index.
+func _qa_choose_reward(index: int) -> void:
+	var screen := main.get("reward_screen") as FloorRewardScreen
+	await _until(func() -> bool: return screen.is_open(), 4.0)
+	if screen.is_open():
+		screen.choose(screen.choices[index])
+	await _seconds(0.1)
+
+
+func _run_sequence() -> void:
+	main.call("set_mode", TrainingArena.Mode.DESCENT)
+	main.call("set_profile", TrainingArena.StunProfile.SHORT)
+	main.call("set_shot_profile", TrainingArena.ShotProfile.SHARP)
+	arena.run_seed = 20260926
+	arena.restart()
+	await _seconds(0.8)
+	await _shot("65_run_hud_start")
+	var run: RunState = arena.run
+	var hud := main.get("hud") as Hud
+	# Kurz vor dem Level-Up: ein Scrapling fällt per echtem Hammerschlag, XP-Orbs springen heraus.
+	run.add_xp(50)
+	var e: Scrapling = arena.active_enemies[0]
+	for c in arena.combatants():
+		c.call("stop_combat")
+	e.global_position = Vector3(0.0, 0.02, -2.0)
+	e.hp = 15.0
+	player.global_position = Vector3(0.0, 0.05, -0.7)
+	await _seconds(0.3)
+	player.facing_direction = Vector3.FORWARD
+	player.rotation.y = PlayerController.yaw_for_direction(Vector3.FORWARD)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _seconds(0.1)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	await _until(func() -> bool: return e.is_defeated, 2.0)
+	await _seconds(0.25)
+	await _shot("66_xp_orbs_dropped")
+	print("QA orbs=%d total=%d xp_before=%d" % [arena.orbs().size(), _orb_sum(), run.total_xp])
+	# Die anderen kämpfen wieder; der Spieler läuft durch die Orbs → Level-Up mitten in der Aktion.
+	for c in arena.combatants():
+		if not bool(c.get("is_defeated")):
+			c.set("target", player)
+	var orb_target := arena.orbs()[0].global_position if not arena.orbs().is_empty() else e.global_position
+	var to := orb_target - player.global_position
+	to.y = 0.0
+	_set_stick(_stick_axes_for_world(to.normalized()))
+	await _until(func() -> bool: return run.player_level >= 2, 3.0)
+	_set_stick(Vector2.ZERO)
+	await _seconds(0.15)
+	await _shot("67_level_up_live")
+	print("QA level=%d paused=%s level_up_visible=%s badge=%s" % [run.player_level, get_tree().paused, hud.is_level_up_visible(), hud.stats_button_text()])
+	await _seconds(1.0)
+	run.add_xp(run.xp_to_next(run.player_level) - run.current_xp)
+	await _seconds(0.3)
+	await _shot("68_stats_badge_plus2")
+	print("QA badge=%s" % hud.stats_button_text())
+	# Stats per Controller (View/Back) öffnen, einen Punkt investieren (Fokus sichtbar).
+	for c in arena.combatants():
+		c.call("stop_combat")
+	await _until(func() -> bool: return player.is_on_floor(), 1.0)
+	_push_joy_button(JOY_BUTTON_BACK)
+	await _seconds(0.3)
+	var stats := main.get("stats_screen") as StatsScreen
+	await _shot("69_stats_screen")
+	stats.invest(RunState.POWER)
+	await _seconds(0.1)
+	stats.invest(RunState.AGILITY)
+	await _seconds(0.2)
+	await _shot("70_stats_invested")
+	print("QA stats open=%s paused=%s power=%d agility=%d unspent=%d damage=%.1f speed=%.2f" % [stats.is_open(), get_tree().paused,
+			run.rank(RunState.POWER), run.rank(RunState.AGILITY), run.unspent_attribute_points, player.weapon.effective_damage(), player.move_speed()])
+	_push_joy_button(JOY_BUTTON_BACK)
+	await _seconds(0.3)
+	# Ebene 1 räumen → Orbs werden eingesaugt → Pflichtauswahl 1 aus 3.
+	var lethal := HitInfo.new()
+	lethal.damage = 200.0
+	for c in arena.combatants():
+		c.call("receive_hit", lethal)
+	await _seconds(0.45)
+	await _shot("71_clear_orb_vacuum")
+	var screen := main.get("reward_screen") as FloorRewardScreen
+	await _until(func() -> bool: return screen.is_open(), 3.0)
+	await _seconds(0.2)
+	await _shot("72_floor_reward_choice")
+	print("QA reward open=%s choices=%s hatch_open=%s xp_total=%d" % [screen.is_open(), screen.choices, arena.hatch.is_open, run.total_xp])
+	var pick: StringName = RunState.LONG_GRIP if screen.choices.has(RunState.LONG_GRIP) else screen.choices[0]
+	screen.choose(pick)
+	await _seconds(0.6)
+	await _shot("73_hatch_after_choice")
+	print("QA picked=%s hatch_open=%s" % [pick, arena.hatch.is_open])
+	# Luke → Ebene 2: Attribute und Upgrade bleiben wirksam.
+	player.global_position = arena.hatch.global_position + Vector3.UP * 0.05
+	await _until(func() -> bool: return arena.descent == TrainingArena.Descent.FLOOR_2, 3.0)
+	await _seconds(0.4)
+	await _shot("74_floor2_with_progress")
+	print("QA floor2 level=%d upgrades=%s damage=%.2f range=%.2f arc=%.0f speed=%.2f max_hp=%.0f" % [run.player_level, run.upgrade_names(),
+			player.weapon.effective_damage(), player.weapon.effective_range(), player.weapon.effective_arc(), player.move_speed(), player.max_hp()])
+	await _measure_rates(1.5)
+	# Neuer Run: alles Basis; dann früher Sturz ohne Upgrade.
+	main.call("restart")
+	await _seconds(0.5)
+	run = arena.run
+	print("QA new run level=%d xp=%d upgrades=%s damage=%.1f speed=%.2f max_hp=%.0f" % [run.player_level, run.total_xp, run.upgrade_names(),
+			player.weapon.effective_damage(), player.move_speed(), player.max_hp()])
+	await _shot("75_new_run_base")
+	arena.active_enemies[0].receive_hit(lethal)
+	await _seconds(0.5)
+	player.global_position = arena.active_enemies[0].global_position + Vector3(0.6, 0.05, 0.0)
+	await _seconds(0.8)
+	player.global_position = Vector3(5.8, 0.05, 1.0)
+	_set_stick(_stick_axes_for_world(Vector3.RIGHT))
+	await _until(func() -> bool: return arena.descent == TrainingArena.Descent.FLOOR_2, 3.0)
+	_set_stick(Vector2.ZERO)
+	await _seconds(0.6)
+	await _shot("76_early_fall_no_reward")
+	print("QA early fall xp=%d level=%d upgrades=%s reward_open=%s hp=%d" % [run.total_xp, run.player_level, run.upgrade_names(),
+			screen.is_open(), int(player.hp)])
+
+
+func _orb_sum() -> int:
+	var total := 0
+	for orb in arena.orbs():
+		total += orb.value
+	return total
+
+
+func _push_joy_button(button: JoyButton) -> void:
+	for pressed in [true, false]:
+		var e := InputEventJoypadButton.new()
+		e.device = 0
+		e.button_index = button
+		e.pressed = pressed
+		_push(e)

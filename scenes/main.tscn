@@ -8,6 +8,8 @@
 [ext_resource type="Script" path="res://scripts/ui/touch_controls.gd" id="6_touch"]
 [ext_resource type="PackedScene" path="res://scenes/ui/pause_menu.tscn" id="7_pause"]
 [ext_resource type="PackedScene" path="res://scenes/ui/encounter_overlay.tscn" id="8_overlay"]
+[ext_resource type="Script" path="res://scripts/ui/stats_screen.gd" id="9_stats"]
+[ext_resource type="Script" path="res://scripts/ui/floor_reward_screen.gd" id="10_reward"]
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_main")
@@ -40,3 +42,9 @@ script = ExtResource("6_touch")
 [node name="PauseMenu" parent="." instance=ExtResource("7_pause")]
 
 [node name="EncounterOverlay" parent="." instance=ExtResource("8_overlay")]
+
+[node name="StatsScreen" type="CanvasLayer" parent="."]
+script = ExtResource("9_stats")
+
+[node name="FloorRewardScreen" type="CanvasLayer" parent="."]
+script = ExtResource("10_reward")

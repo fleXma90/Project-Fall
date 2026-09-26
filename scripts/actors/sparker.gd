@@ -34,6 +34,8 @@ var is_defeated: bool = false
 var defeat_count: int = 0
 ## Lokaler Umweg an Lücken (nur Ebene 2 des Abstiegs); sonst stoppt fehlender Boden die Laufabsicht.
 var gap_detour: bool = false
+## Letzte Position mit Bodenkontakt (Abwurfort der XP-Orbs nach einem Kantensturz).
+var last_ground_position: Vector3 = Vector3.ZERO
 var _detour_side: Array[float] = [1.0]
 var last_defeat_reason: DefeatReason = DefeatReason.HP
 var neighbors: Array[Node3D] = []
@@ -93,6 +95,8 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y -= _gravity * delta
 	move_and_slide()
+	if is_on_floor():
+		last_ground_position = global_position
 	_push_visual_state(desired)
 
 
@@ -282,6 +286,7 @@ func set_active(active: bool) -> void:
 func reset_to(spawn: Transform3D) -> void:
 	spawn_transform = spawn.orthonormalized()
 	global_transform = spawn_transform
+	last_ground_position = spawn_transform.origin
 	velocity = Vector3.ZERO
 	_knockback_left = 0.0
 	hp = tuning.max_hp

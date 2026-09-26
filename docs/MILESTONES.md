@@ -101,9 +101,21 @@ Nach ausdrücklicher Freigabe:
 
 Keine Generatoren/XP/Upgrades.
 
+## M3A — Run Progression V1 (begrenzter Teilmeilenstein)
+
+**Ausdrücklich freigegeben am 26.09.2026, nur dieser Teil.** Umsetzung: `docs/reports/M3A_REPORT.md`, Regeln: `docs/RUN_PROGRESSION.md`.
+
+- RunState je Abstiegs-Run (bleibt über Ebenenwechsel, neuer Run bei Tod/Sturz/Neustart/Szenariowechsel),
+- XP (Scrapling 30, Funkenwerfer 40) als sichtbare, magnetisch einsammelbare Orbs (Nutzerwunsch), Level-Formel 60 + 30 · (Level − 1), Live-Level-Up ohne Pause, +1 Attributspunkt,
+- sechs Attribute (Stärke, Vitalität, Tempo, Beweglichkeit, Wucht, Erholung), Rang 0–8, Stats-Screen per Button/C/View-Back,
+- Floor-Clear-Upgrade 1 aus 3 (6er-Pool) vor dem regulären Abstieg; früher Sturz ohne Upgrade; Clear im Fall = Auswahl nach der Landung,
+- Effektive Werte = Basisressource × Attribut × Upgrade, jederzeit neu berechnet; keine Ressourcenmutation.
+
+**Nicht enthalten (gesperrt):** M3B, Floor-Variety/Generatoren, dritte Ebene, Relikte, Boss-Belohnungen, Meta-Währung, Save/Load, Shops, Inventar, mehrere Waffen, neue Gegner/Hazards, Produktionsassets, Kameraumbau.
+
 ## M3 — erster Run-Build
 
-RunState, überschaubares XP-Grundwachstum und wenige mechanische Hammer-Upgrades. Tod setzt Run-Macht zurück. Floorwechsel behält sie. Keine permanente Statprogression.
+RunState, überschaubares XP-Grundwachstum und wenige mechanische Hammer-Upgrades. Tod setzt Run-Macht zurück. Floorwechsel behält sie. Keine permanente Statprogression. (Mit M3A als erster Teil umgesetzt; Rest nicht freigegeben.)
 
 ## A1 — Art Vertical Slice (separater Produktionsauftrag)
 

@@ -116,4 +116,18 @@ Scharf ist eine Laufzeitkopie der Ressource (`TrainingArena.sharp_*`); alle ande
 
 Gegnerwerte auf Ebene 2 sind identisch mit Ebene 1 (Profil B, Schussprofil wie gewählt). Sturzschaden und Landeschutz sind Startwerte, nicht final.
 
+## Run-Progression (M3A, Prototypwerte)
+
+| Wert | Start | Ort |
+|---|---:|---|
+| XP Scrapling / Funkenwerfer | 30 / 40 | `TrainingArena.scrapling_xp` / `sparker_xp` |
+| XP je Orb | höchstens 10 | `xp_per_orb` |
+| Level-Schwelle | 60 + 30 · (Level − 1) | `RunState.xp_to_next` |
+| Magnetradius / Einsammeln / Anziehung | 2.2 m / 0.55 m / 2 → 16 m/s, 22 m/s² (Sog ×3/×1.5) | `XpOrb` |
+| Upgrade-Auswahl nach Clear | 0.8 s, höchstens 1.6 s (Orbs) | `reward_delay` / `reward_max_delay` |
+| Attribute je Rang (max. 8) | Stärke +5 %, Vitalität +10 HP, Tempo +3 %, Beweglichkeit +2.5 %, Wucht +6 %, Erholung −4 % | `RunState` |
+| Upgrades | Hammerkopf ×1.15, Einschlag ×1.30, Bogen +25°, Reichweite +0.25 m, Momentum ×1.2 für 1.5 s, Dodge −0.20 s | `RunState` |
+
+Details, Berechnungsreihenfolge und offene Balancefragen: `RUN_PROGRESSION.md`. Die Basisressourcen (`player_tuning.tres`, `hammer.tres`) bleiben unverändert.
+
 Ab M2: VFX-Budget weiterhin offen. VFX, Partikelmengen und Schattenqualität werden erst auf realer Smartphone-Hardware budgetiert.
