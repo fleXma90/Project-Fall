@@ -19,6 +19,8 @@ var _descent_only: bool = false
 var _descent_movie_only: bool = false
 ## Nur die M3A-Run-Sequenz (--qa-run): XP-Orbs, Level-Up, Stats, Floor-Upgrade.
 var _run_only: bool = false
+## Nur die M3B-Sequenz (--qa-floors): alle Vorlagen, Kämpfe, Abstiege zwischen Zufallsvorlagen.
+var _floors_only: bool = false
 
 
 func _ready() -> void:
@@ -36,6 +38,8 @@ func _ready() -> void:
 			_descent_movie_only = true
 		elif arg == "--qa-run":
 			_run_only = true
+		elif arg == "--qa-floors":
+			_floors_only = true
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(_out_dir))
 	main = MAIN_SCENE.instantiate()
 	# Die M1/M1.1-Sequenz läuft im Trainingsmodus, danach folgt die M2A-Kampfsequenz.
@@ -54,6 +58,9 @@ func _ready() -> void:
 		await _group_movie()
 	elif _mixed_movie_only:
 		await _mixed_movie()
+	elif _floors_only:
+		print("QA window=%s visible_rect=%s" % [DisplayServer.window_get_size(), get_viewport().get_visible_rect().size])
+		await _floors_sequence()
 	elif _run_only:
 		print("QA window=%s visible_rect=%s" % [DisplayServer.window_get_size(), get_viewport().get_visible_rect().size])
 		await _run_sequence()
@@ -742,6 +749,7 @@ func _mixed_movie() -> void:
 # --- Abstieg: zwei Ebenen ------------------------------------------------------------
 
 func _descent_sequence() -> void:
+	arena.forced_floor_ids = [FloorTemplates.FIXTURE_UPPER, FloorTemplates.FIXTURE_RING]  # feste M2D-Koordinaten
 	main.call("set_mode", TrainingArena.Mode.DESCENT)
 	main.call("set_profile", TrainingArena.StunProfile.SHORT)
 	main.call("set_shot_profile", TrainingArena.ShotProfile.SHARP)
@@ -862,6 +870,7 @@ func _drive_hold_forward_descent() -> void:
 
 
 func _descent_movie() -> void:
+	arena.forced_floor_ids = [FloorTemplates.FIXTURE_UPPER, FloorTemplates.FIXTURE_RING]  # feste M2D-Koordinaten
 	main.call("set_mode", TrainingArena.Mode.DESCENT)
 	main.call("set_profile", TrainingArena.StunProfile.SHORT)
 	main.call("set_shot_profile", TrainingArena.ShotProfile.SHARP)
@@ -912,6 +921,7 @@ func _qa_choose_reward(index: int) -> void:
 
 
 func _run_sequence() -> void:
+	arena.forced_floor_ids = [FloorTemplates.FIXTURE_UPPER, FloorTemplates.FIXTURE_RING]  # feste M2D-Koordinaten
 	main.call("set_mode", TrainingArena.Mode.DESCENT)
 	main.call("set_profile", TrainingArena.StunProfile.SHORT)
 	main.call("set_shot_profile", TrainingArena.ShotProfile.SHARP)
@@ -1034,3 +1044,121 @@ func _push_joy_button(button: JoyButton) -> void:
 		e.button_index = button
 		e.pressed = pressed
 		_push(e)
+
+
+# --- M3B: Floor-Variety ------------------------------------------------------------------
+
+func _qa_floors(ids: Array[StringName], seed_value: int = 20260926) -> void:
+	arena.forced_floor_ids = ids
+	arena.run_seed = seed_value
+	arena.restart()
+	await _seconds(0.1)
+
+
+func _qa_calm() -> void:
+	for c in arena.combatants():
+		c.call("stop_combat")
+
+
+func _qa_drop_off_right_edge() -> void:
+	var t := arena.upper_template
+	player.global_position = arena.upper_floor.to_global(Vector3(t.bounds().end.x + 0.7, 0.05, t.bounds().get_center().y))
+	player.velocity = Vector3.ZERO
+	await _until(func() -> bool: return arena.descent == TrainingArena.Descent.FLOOR_2, 3.0)
+
+
+func _floors_sequence() -> void:
+	main.call("set_mode", TrainingArena.Mode.DESCENT)
+	main.call("set_profile", TrainingArena.StunProfile.SHORT)
+	main.call("set_shot_profile", TrainingArena.ShotProfile.SHARP)
+	# Die F3-Debugzeile (standardmäßig sichtbar) zeigt Vorlage, Kantenrisiko und Run-Ebene.
+	# 1. Jede Vorlage einmal zu Kampfbeginn (Ebene 1) bzw. nach der Landung (nur Ebene 2).
+	for t in FloorTemplates.all():
+		if t.allowed_on_floor(1):
+			await _qa_floors([t.id, &"shattered_ring" if t.id != &"central_pit" else &"cross_forge"])
+			_qa_calm()
+			await _seconds(0.9)
+		else:
+			await _qa_floors([&"open_forge", t.id])
+			_qa_calm()
+			await _qa_drop_off_right_edge()
+			_qa_calm()
+			await _seconds(0.9)
+		var in_view := 0
+		for c in arena.combatants():
+			if camera.is_position_in_frustum(c.global_position + Vector3.UP * 0.6):
+				in_view += 1
+		await _shot("80_template_%s" % t.id)
+		print("QA template %s risk=%s floor=%d in_view=%d/%d" % [t.id, t.risk_name(), arena.floor_index(), in_view, arena.combatants().size()])
+	# 2. Kämpfe: Open Forge und Central Pit (RT gehalten, nächster Gegner, Kanten-/Lochvorsicht).
+	for id in [&"open_forge", &"central_pit"]:
+		await _qa_floors([id, &"shattered_ring"])
+		await _seconds(0.4)
+		_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+		await _contact_sheet("81_fight_%s_sheet" % id, 4.0, 32, func(_t: float) -> void: _drive_hold_forward_descent())
+		_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+		_set_stick(Vector2.ZERO)
+		print("QA fight %s hp=%d remaining=%d fall_defeats=%d" % [id, int(player.hp), arena.enemies_remaining(),
+				arena.stats.enemies_fall_defeated if arena.stats != null else -1])
+	# 3. Twin Plates: Gegner laufen über die Verbindung zum ruhenden Spieler.
+	await _qa_floors([&"twin_plates", &"shattered_ring"])
+	player.protect_from_combat(100.0)
+	var runner: Node3D = arena.active_enemies[0]
+	await _contact_sheet("82_twin_plates_enemy_path_sheet", 4.0, 32, func(_t: float) -> void: pass, runner)
+	print("QA twin plates runner=%s state=%s defeated=%s" % [runner.global_position, Scrapling.State.keys()[(runner as Scrapling).state], (runner as Scrapling).is_defeated])
+	# 4. Shattered Ring: echter Hammerschlag stößt einen Scrapling in den Schacht.
+	await _qa_floors([&"open_forge", &"shattered_ring"])
+	_qa_calm()
+	await _qa_drop_off_right_edge()
+	await _seconds(0.4)
+	_qa_calm()
+	for c in arena.combatants():
+		c.call("stop_combat")
+	var s: Scrapling = arena.active_enemies[0]
+	var lf := arena.lower_floor
+	s.global_position = lf.to_global(Vector3(-0.5, 0.02, -3.5))
+	player.global_position = lf.to_global(Vector3(-0.5, 0.05, -4.9))
+	await _seconds(0.3)
+	player.facing_direction = (lf.global_basis * Vector3.BACK).normalized()
+	player.rotation.y = PlayerController.yaw_for_direction(player.facing_direction)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _contact_sheet("83_ring_knockback_sheet", 1.6, 24, func(_t: float) -> void: pass, s)
+	_joy(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	await _until(func() -> bool: return s.is_defeated, 2.0)
+	await _seconds(0.6)
+	await _shot("84_ring_after_shaft_kill")
+	print("QA ring knockback defeated=%s reason=%s orbs=%d" % [s.is_defeated, Scrapling.DefeatReason.keys()[s.last_defeat_reason], arena.orbs().size()])
+	# 5. Regulärer Abstieg zwischen zwei Zufallsvorlagen.
+	await _qa_floors([], 777)
+	print("QA random run floors=%s → %s" % [arena.upper_template.id, arena.lower_template.id])
+	var lethal := HitInfo.new()
+	lethal.damage = 200.0
+	for c in arena.combatants():
+		c.call("receive_hit", lethal)
+	await _qa_choose_reward(0)
+	await _seconds(0.6)
+	player.global_position = arena.hatch.global_position + Vector3(0, 0.05, -1.8)
+	await _seconds(0.3)
+	await _contact_sheet("85_random_hatch_descent_sheet", 2.2, 24, func(_t: float) -> void:
+		var to := arena.hatch.global_position - player.global_position
+		to.y = 0.0
+		_set_stick(_stick_axes_for_world(to.normalized()) if arena.descent == TrainingArena.Descent.FLOOR_1_CLEARED else Vector2.ZERO))
+	_set_stick(Vector2.ZERO)
+	await _until(func() -> bool: return arena.descent == TrainingArena.Descent.FLOOR_2, 3.0)
+	await _seconds(0.3)
+	await _shot("86_random_hatch_landed")
+	await _measure_rates(1.5)
+	# 6. Früher Kantensturz auf eine andere Vorlage.
+	await _qa_floors([], 4242)
+	print("QA early fall floors=%s → %s" % [arena.upper_template.id, arena.lower_template.id])
+	_qa_calm()
+	var t1 := arena.upper_template
+	player.global_position = arena.upper_floor.to_global(Vector3(t1.bounds().end.x - 1.2, 0.05, t1.bounds().get_center().y))
+	await _seconds(0.3)
+	await _contact_sheet("87_edge_fall_template_sheet", 2.0, 24, func(_t: float) -> void:
+		_set_stick(_stick_axes_for_world(arena.upper_floor.global_basis * Vector3.RIGHT) if arena.descent == TrainingArena.Descent.FLOOR_1 else Vector2.ZERO))
+	_set_stick(Vector2.ZERO)
+	await _until(func() -> bool: return arena.descent == TrainingArena.Descent.FLOOR_2, 3.0)
+	await _seconds(0.4)
+	await _shot("88_edge_fall_landed")
+	print("QA early fall landed hp=%d floor2=%s slot_local=%s" % [int(player.hp), arena.lower_template.id, arena.lower_floor.to_local(player.global_position)])

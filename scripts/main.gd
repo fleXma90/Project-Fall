@@ -181,6 +181,8 @@ func _show_result(victory: bool, generation: int) -> void:
 		var run := arena.run
 		summary += "\nLevel %d · Attributspunkte %d verteilt / %d offen · Upgrades: %s" % [run.player_level,
 				run.spent_points(), run.unspent_attribute_points, run.upgrade_names()]
+		if arena.upper_template != null:
+			summary += "\nFloors: %s → %s" % [arena.upper_template.display_name, arena.lower_template.display_name]
 	result_overlay.show_result(victory, TrainingArena.scenario_name(arena.mode), summary)
 
 

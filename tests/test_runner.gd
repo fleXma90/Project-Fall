@@ -116,6 +116,14 @@ func _ready() -> void:
 		"test_r10_early_fall_keeps_progress_without_reward",
 		"test_r11_clear_during_fall_defers_reward",
 		"test_r12_new_run_resets_everything",
+		"test_v1_template_catalog_and_candidates",
+		"test_v2_validator_and_physical_geometry",
+		"test_v3_selection_rules_determinism_and_rng_split",
+		"test_v4_spawns_on_every_template",
+		"test_v5_vertical_landing_on_validated_slots",
+		"test_v6_hidden_floor_and_transition",
+		"test_v7_enemy_navigation_and_knockback_on_all_templates",
+		"test_v8_run_progression_across_templates",
 	]
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--only="):
@@ -133,15 +141,20 @@ func _ready() -> void:
 			mode = TrainingArena.Mode.GROUP
 		elif test_name.begins_with("test_x") or test_name.begins_with("test_y") or test_name.contains("_mixed_"):
 			mode = TrainingArena.Mode.MIXED
-		elif test_name.begins_with("test_z") or test_name.begins_with("test_r"):
+		elif test_name.begins_with("test_z") or test_name.begins_with("test_r") or test_name.begins_with("test_v"):
 			mode = TrainingArena.Mode.DESCENT  # Abstieg mit dem aktuellen Standard (Profil B, Schuss scharf)
-		var profile: int = TrainingArena.StunProfile.SHORT if test_name.ends_with("_b") or test_name.begins_with("test_x") or test_name.begins_with("test_z") or test_name.begins_with("test_r") else TrainingArena.StunProfile.BASE
+		var profile: int = TrainingArena.StunProfile.SHORT if test_name.ends_with("_b") or test_name.begins_with("test_x") or test_name.begins_with("test_z") or test_name.begins_with("test_r") or test_name.begins_with("test_v") else TrainingArena.StunProfile.BASE
 		# Funkenwerfer-Schussprofil: bestehende Tests ausdrücklich Standard, test_y…/…_sharp… Scharf.
-		var shot: int = TrainingArena.ShotProfile.SHARP if test_name.begins_with("test_y") or test_name.begins_with("test_z") or test_name.begins_with("test_r") or test_name.contains("_sharp") else TrainingArena.ShotProfile.STANDARD
+		var shot: int = TrainingArena.ShotProfile.SHARP if test_name.begins_with("test_y") or test_name.begins_with("test_z") or test_name.begins_with("test_r") or test_name.begins_with("test_v") or test_name.contains("_sharp") else TrainingArena.ShotProfile.STANDARD
 		if test_name.contains("default_profile"):
 			profile = -1
 			shot = -1
-		await _setup(mode, profile, shot)
+		# M2D/M3A-Regressionen laufen auf den festen M2D-Testvorlagen (bekannte Koordinaten); M3B-Tests (test_v…)
+		# wählen ihre Vorlagen selbst.
+		var floors: Array[StringName] = []
+		if test_name.begins_with("test_z") or test_name.begins_with("test_r"):
+			floors = [FloorTemplates.FIXTURE_UPPER, FloorTemplates.FIXTURE_RING]
+		await _setup(mode, profile, shot, floors)
 		await Callable(self, test_name).call()
 		await _teardown()
 		print("%s  %s" % ["PASS" if _failures.size() == before else "FAIL", test_name])
@@ -166,7 +179,7 @@ func _ticks(count: int) -> void:
 
 
 ## profile/shot < 0: nicht setzen (Standard der Hauptszene prüfen).
-func _setup(mode: TrainingArena.Mode, profile: int, shot: int = TrainingArena.ShotProfile.STANDARD) -> void:
+func _setup(mode: TrainingArena.Mode, profile: int, shot: int = TrainingArena.ShotProfile.STANDARD, floors: Array[StringName] = []) -> void:
 	get_tree().paused = false
 	InputRouter.set_touch_test_mode(false)
 	InputRouter._switch_source(InputRouter.Source.KEYBOARD_MOUSE)
@@ -181,6 +194,7 @@ func _setup(mode: TrainingArena.Mode, profile: int, shot: int = TrainingArena.Sh
 	if shot >= 0:
 		main.set("start_shot_profile", shot)
 	main.set("write_log", false)
+	(main.get_node("TrainingArena") as TrainingArena).forced_floor_ids = floors
 	# Der Testläufer läuft immer (PROCESS_MODE_ALWAYS); die Hauptszene muss wie im echten Spiel pausierbar sein.
 	main.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(main)
@@ -2592,7 +2606,8 @@ func test_z1_descent_start_layout_and_cycle() -> void:
 		var local: Vector3 = arena.lower_floor.to_local(c.global_position)
 		_check(arena.lower_floor.is_safe_point(Vector2(local.x, local.z), 1.0), "%s steht auf Ebene 2 an einer Kante" % c.name)
 	for c in arena.combatants():
-		_check(not bool(c.get("gap_detour")), "Ebene-1-Gegner mit Lückenumweg (Verhalten weicht vom Mischkampf ab)")
+		# M3B: Im Abstieg können alle Ebenen Löcher/Kerben haben → lokaler Umweg auch auf Ebene 1 (Mischkampf bleibt ohne).
+		_check(bool(c.get("gap_detour")), "Ebene-1-Gegner im Abstieg ohne Lückenumweg")
 	# Neue Form: Schacht in der Mitte von Ebene 2.
 	_check(not arena.lower_floor.contains(Vector2(0, -1)) and arena.lower_floor.contains(Vector2(0, 3)) and arena.lower_floor.contains(Vector2(-6, -1)),
 			"Ebene 2 hat keinen Schacht in der Mitte")
@@ -2610,8 +2625,11 @@ func test_z1_descent_start_layout_and_cycle() -> void:
 	for m in [TrainingArena.Mode.MIXED, TrainingArena.Mode.GROUP, TrainingArena.Mode.COMBAT, TrainingArena.Mode.TRAINING]:
 		main.call("set_mode", m)
 		await _ticks(2)
-		_check(not arena.lower_floor.visible and arena.lower_floor.collision_layer == 0 and arena.descent == TrainingArena.Descent.NONE,
-				"Ebene 2 in %s aktiv" % TrainingArena.scenario_name(m))
+		_check(arena.lower_floor == null and arena.run_floors.get_child_count() == 0 and arena.upper_floor == arena.fixed_floor
+				and arena.fixed_floor.visible and arena.fixed_floor.collision_layer == 1 and arena.descent == TrainingArena.Descent.NONE,
+				"Ebene 2/Run-Ebenen in %s aktiv oder feste Arena fehlt" % TrainingArena.scenario_name(m))
+		for c in arena.combatants():
+			_check(not bool(c.get("gap_detour")), "%s nutzt in %s den Lückenumweg" % [c.name, TrainingArena.scenario_name(m)])
 		for c in arena.lower_combatants():
 			_check(not c.visible and int(c.get("collision_layer")) == 0, "Ebene-2-Gegner in %s aktiv" % TrainingArena.scenario_name(m))
 
@@ -3647,3 +3665,399 @@ func _assert_base_run(context: String, old: RunState) -> void:
 	_check(not arena.reward_pending and not _reward_screen().is_open() and not _stats_screen().is_open() and arena.orbs().is_empty(),
 			"%s: Belohnung/Screens/Orbs übrig" % context)
 	_check(_hud().stats_button_text() == "STATS", "%s: Badge nicht zurückgesetzt" % context)
+
+
+# --- M3B: Floor-Vorlagen (test_v…) ------------------------------------------------------------
+
+const V_IDS: Array[StringName] = [&"open_forge", &"broken_corner", &"central_pit", &"twin_plates", &"cross_forge", &"shattered_ring"]
+
+
+## Neuer Abstiegs-Run mit festen Vorlagen [Ebene 1, Ebene 2] (leer = Zufall aus run_seed).
+func _start_floors(ids: Array[StringName], seed_value: int = 4242) -> void:
+	arena.forced_floor_ids = ids
+	arena.run_seed = seed_value
+	arena.floor_seed = 0
+	arena.restart()
+	await _ticks(10)
+
+
+func _local_xz(floor_node: FloorGeometry, world: Vector3) -> Vector2:
+	var local := floor_node.to_local(world)
+	return Vector2(local.x, local.z)
+
+
+func _nearest_slot(slots: Array[Vector2], p: Vector2) -> float:
+	var best := INF
+	for s in slots:
+		best = minf(best, s.distance_to(p))
+	return best
+
+
+func _floor_hit(world: Vector3) -> Dictionary:
+	var space := player.get_world_3d().direct_space_state
+	return space.intersect_ray(PhysicsRayQueryParameters3D.create(world + Vector3.UP * 3.0, world + Vector3.DOWN * 3.0, 1))
+
+
+func test_v1_template_catalog_and_candidates() -> void:
+	var all := FloorTemplates.all()
+	var ids := {}
+	for t in all:
+		ids[t.id] = t
+	_check(all.size() == 6 and ids.size() == 6, "Nicht genau sechs eindeutige Vorlagen (%d)" % all.size())
+	for id in V_IDS:
+		_check(ids.has(id), "Vorlage %s fehlt" % id)
+	var expected := {&"open_forge": FloorTemplate.EdgeRisk.LOW, &"broken_corner": FloorTemplate.EdgeRisk.LOW,
+			&"central_pit": FloorTemplate.EdgeRisk.MEDIUM, &"twin_plates": FloorTemplate.EdgeRisk.MEDIUM,
+			&"cross_forge": FloorTemplate.EdgeRisk.MEDIUM, &"shattered_ring": FloorTemplate.EdgeRisk.HIGH}
+	for id in expected:
+		if ids.has(id):
+			_check((ids[id] as FloorTemplate).edge_risk == expected[id], "%s: falsches Kantenrisiko" % id)
+	for t in FloorTemplates.candidates(1):
+		_check(t.edge_risk != FloorTemplate.EdgeRisk.HIGH and t.has_hatch, "%s auf Ebene 1 unzulässig" % t.id)
+	for t in FloorTemplates.candidates(2):
+		_check(t.edge_risk != FloorTemplate.EdgeRisk.LOW, "%s auf Ebene 2 unzulässig" % t.id)
+	_check(FloorTemplates.candidates(1).size() == 5 and FloorTemplates.candidates(2).size() == 4, "Kandidatenzahl falsch")
+	for f in FloorTemplates.fixtures():
+		_check(f.is_fixture and not all.has(f) and not f.allowed_on_floor(1) and not f.allowed_on_floor(2), "Testvorlage %s im Pool" % f.id)
+
+
+func test_v2_validator_and_physical_geometry() -> void:
+	for t in FloorTemplates.all():
+		var errors := t.validate()
+		_check(errors.is_empty(), "Vorlage ungültig: %s" % ", ".join(errors))
+	# Absichtlich kaputte Vorlage: Slot im Loch, überlappende Spawns, Landing an der Kante.
+	var src := FloorTemplates.by_id(&"central_pit")
+	var broken := FloorTemplate.new()
+	broken.id = &"broken_test"
+	broken.edge_risk = src.edge_risk
+	broken.rects = src.rects.duplicate()
+	broken.holes = src.holes.duplicate()
+	broken.player_start = src.player_start
+	broken.melee_slots = [Vector2(0, 0), Vector2(4.5, -3), Vector2(4.6, -3.2)]
+	broken.ranged_slots = src.ranged_slots.duplicate()
+	broken.landing_slots = [Vector2(7.8, 0), Vector2(3, 4.5)]
+	broken.has_hatch = true
+	broken.hatch_slot = src.hatch_slot
+	var errors := broken.validate()
+	var text := "\n".join(errors)
+	_check(errors.size() >= 3 and text.contains("[broken_test]") and text.contains("(0.0, 0.0)") and text.contains("überlappen")
+			and text.contains("(7.8, 0.0)"), "Kaputte Vorlage nicht erkannt: %s" % text)
+	# Physik: Boden genau dort, wo die Vorlage Boden meldet; Löcher ohne Collider; nichts außerhalb.
+	arena.forced_floor_ids = []
+	for i in FloorTemplates.all().size():
+		var t := FloorTemplates.all()[i]
+		var node: FloorGeometry = arena.call("_instantiate_floor", t, -40.0, t.has_hatch)
+		node.position.x = 60.0 * (i + 1)
+		await _ticks(2)
+		var mismatches := 0
+		var b := t.bounds().grow(0.6)
+		var x := b.position.x + 0.13
+		while x < b.end.x:
+			var z := b.position.y + 0.17
+			while z < b.end.y:
+				var hit := not _floor_hit(node.to_global(Vector3(x, 0.0, z))).is_empty()
+				if hit != t.contains(Vector2(x, z)):
+					mismatches += 1
+				z += 0.5
+			x += 0.5
+		_check(mismatches == 0, "%s: %d Abweichungen zwischen Collider und Bodenfläche" % [t.id, mismatches])
+		for hole in t.holes:
+			_check(_floor_hit(node.to_global(Vector3(hole.get_center().x, 0, hole.get_center().y))).is_empty(), "%s: Loch mit Collider" % t.id)
+		var slots: Array[Vector2] = [t.player_start]
+		slots.append_array(t.spawn_slots())
+		slots.append_array(t.landing_slots)
+		if t.has_hatch:
+			slots.append(t.hatch_slot)
+		for s in slots:
+			var hit := _floor_hit(node.to_global(Vector3(s.x, 0, s.y)))
+			_check(not hit.is_empty() and absf(hit["position"].y - node.global_position.y) < 0.02, "%s: Slot %s ohne Boden" % [t.id, s])
+		for shape: CollisionShape3D in node.find_children("*", "CollisionShape3D", true, false):
+			var box := shape.shape as BoxShape3D
+			var local := node.to_local(shape.global_position)
+			var top := local.y + box.size.y * 0.5
+			_check(t.bounds().grow(0.01).encloses(Rect2(local.x - box.size.x * 0.5, local.z - box.size.z * 0.5, box.size.x, box.size.z))
+					and top <= 0.001, "%s: Collider außerhalb der Fläche oder als Wand (%s)" % [t.id, shape.get_path()])
+		node.set_enabled(false)
+		node.queue_free()
+	await _ticks(2)
+
+
+func test_v3_selection_rules_determinism_and_rng_split() -> void:
+	var pairs := {}
+	var seen := {}
+	for seed_value in range(1, 81):
+		var run := RunState.new(seed_value)
+		var pair := FloorTemplates.select_pair(run.floor_rng)
+		_check(pair[0].allowed_on_floor(1) and pair[1].allowed_on_floor(2) and pair[0] != pair[1],
+				"Seed %d: unzulässige Auswahl %s → %s" % [seed_value, pair[0].id, pair[1].id])
+		var again := FloorTemplates.select_pair(RunState.new(seed_value).floor_rng)
+		_check(again[0] == pair[0] and again[1] == pair[1], "Seed %d nicht deterministisch" % seed_value)
+		pairs["%s>%s" % [pair[0].id, pair[1].id]] = true
+		seen[pair[0].id] = true
+		seen[pair[1].id] = true
+		# Floor-Zufall verändert die Upgrade-Reihenfolge nicht.
+		var reference := RunState.new(seed_value).roll_upgrade_choices(3)
+		var with_floors := RunState.new(seed_value)
+		FloorTemplates.select_pair(with_floors.floor_rng)
+		for i in 5:
+			with_floors.floor_rng.randi()
+		_check(with_floors.roll_upgrade_choices(3) == reference, "Seed %d: Floor-Zufall verändert Upgrade-Karten" % seed_value)
+	_check(pairs.size() >= 8 and seen.size() == 6, "Zu wenig Vielfalt: %d Paare, %d Vorlagen" % [pairs.size(), seen.size()])
+	# Über die Arena: gleicher Seed → gleiche Ebenen und Spawns; Auswahl fix im Run.
+	arena.forced_floor_ids = []
+	arena.run_seed = 99
+	arena.restart()
+	var first := [arena.upper_template.id, arena.lower_template.id, arena.active_enemies[0].global_position, arena.sparker.global_position]
+	await _ticks(5)
+	arena.restart()
+	var second := [arena.upper_template.id, arena.lower_template.id, arena.active_enemies[0].global_position, arena.sparker.global_position]
+	await _ticks(5)
+	_check(first == second and arena.run.floor_template_ids == [first[0], first[1]], "Arena-Auswahl nicht reproduzierbar: %s / %s" % [first, second])
+	# Fester Floor-Seed überschreibt die Ableitung.
+	arena.floor_seed = 1234
+	arena.run_seed = 5
+	arena.restart()
+	await _ticks(3)
+	var fixed := arena.upper_template.id
+	arena.run_seed = 6
+	arena.restart()
+	await _ticks(3)
+	_check(arena.upper_template.id == fixed, "--floor-seed wirkt nicht")
+	arena.floor_seed = 0
+
+
+func test_v4_spawns_on_every_template() -> void:
+	var checked := {}
+	for t1 in FloorTemplates.candidates(1):
+		var t2: FloorTemplate = null
+		for c in FloorTemplates.candidates(2):
+			if c != t1 and not checked.has(c.id):
+				t2 = c
+				break
+		if t2 == null:
+			t2 = FloorTemplates.by_id(&"shattered_ring")
+		checked[t2.id] = true
+		arena.forced_floor_ids = [t1.id, t2.id]
+		arena.restart()  # Positionen direkt nach dem Start prüfen (Gegner laufen sonst schon los)
+		_calm_mixed()
+		_check(arena.active_enemies.size() == 2 and arena.active_shooters.size() == 1, "%s: nicht 2 Scraplings + 1 Funkenwerfer" % t1.id)
+		var positions: Array[Vector2] = []
+		for e in arena.active_enemies:
+			var p := _local_xz(arena.upper_floor, e.global_position)
+			_check(_nearest_slot(t1.melee_slots, p) < 0.1, "%s: Scrapling nicht auf Nahkampf-Slot (%s)" % [t1.id, p])
+			positions.append(p)
+		var sp := _local_xz(arena.upper_floor, arena.active_shooters[0].global_position)
+		_check(_nearest_slot(t1.ranged_slots, sp) < 0.1, "%s: Funkenwerfer nicht auf Fernkampf-Slot" % t1.id)
+		positions.append(sp)
+		var start := _local_xz(arena.upper_floor, player.global_position)
+		await _ticks(2)
+		_check(start.distance_to(t1.player_start) < 0.1, "%s: Spieler nicht am Start" % t1.id)
+		for i in positions.size():
+			_check(t1.is_safe_point(positions[i], 1.5) and positions[i].distance_to(start) >= 4.0, "%s: Spawn %s unsicher/zu nah" % [t1.id, positions[i]])
+			for j in range(i + 1, positions.size()):
+				_check(positions[i].distance_to(positions[j]) >= 2.0, "%s: Spawns überlappen" % t1.id)
+		await _ticks(60)
+		for c in arena.combatants():
+			_check(camera.is_position_in_frustum(c.global_position + Vector3.UP * 0.6), "%s: %s zu Beginn nicht im Bild" % [t1.id, c.name])
+		# Ebene 2: Gegner auf den Slots der Vorlage, verborgen und ohne Ziel.
+		for e in arena.lower_enemies:
+			var slot_distance := _nearest_slot(t2.melee_slots, _local_xz(arena.lower_floor, e.global_position))
+			_check(slot_distance < 0.1 and not e.visible and e.target == null,
+					"%s (Ebene 2): %s nicht wartend auf Slot (Abstand %.2f, sichtbar %s, Ziel %s, Pos %s)" % [t2.id, e.name, slot_distance,
+					e.visible, e.target, e.global_position])
+		_check(_nearest_slot(t2.ranged_slots, _local_xz(arena.lower_floor, arena.lower_shooters[0].global_position)) < 0.1,
+				"%s (Ebene 2): Funkenwerfer nicht auf Slot" % t2.id)
+	_check(checked.size() == 4, "Nicht alle Ebene-2-Vorlagen geprüft (%s)" % [checked.keys()])
+
+
+func test_v5_vertical_landing_on_validated_slots() -> void:
+	# Luke: senkrecht, Landing-Slot unter der Luke.
+	await _start_floors([&"open_forge", &"central_pit"])
+	await _kill_upper_floor()
+	var hatch_pos := arena.hatch.global_position
+	player.global_position = hatch_pos + Vector3.UP * 0.05
+	player.velocity = Vector3.ZERO
+	await _await_descent(TrainingArena.Descent.FLOOR_2)
+	await _ticks(3)
+	var t2 := arena.lower_template
+	_check(Vector2(player.global_position.x - hatch_pos.x, player.global_position.z - hatch_pos.z).length() < 0.3, "Lukenfall nicht senkrecht")
+	_check(_nearest_slot(t2.landing_slots, _local_xz(arena.lower_floor, player.global_position)) < 0.3, "Lukenfall nicht auf Landing-Slot")
+	# Kantenstürze an verschiedenen Stellen: senkrecht, jeweils auf einem Slot; mehrere Slots genutzt.
+	var used := {}
+	var t1 := FloorTemplates.by_id(&"broken_corner")
+	var b := t1.bounds()
+	# Rechts über die Kante, in die linke Kerbe, unten über die Kante, in die fehlende Ecke.
+	var exits: Array[Vector2] = [Vector2(b.end.x + 0.7, 2.0), Vector2(-7.3, 2.2), Vector2(-3.0, b.end.y + 0.7), Vector2(5.5, -4.0)]
+	for exit_point in exits:
+		await _start_floors([&"broken_corner", &"shattered_ring"])
+		_calm_mixed()
+		_check(not t1.contains(exit_point), "Vorbereitung: Absprungpunkt %s liegt auf Boden" % exit_point)
+		player.global_position = arena.upper_floor.to_global(Vector3(exit_point.x, 0.05, exit_point.y))
+		player.velocity = Vector3.ZERO
+		var leave := player.global_position
+		await _await_descent(TrainingArena.Descent.FLOOR_2)
+		await _ticks(3)
+		var drift := Vector2(player.global_position.x - leave.x, player.global_position.z - leave.z).length()
+		var local := _local_xz(arena.lower_floor, player.global_position)
+		var slot_index := -1
+		for i in arena.lower_template.landing_slots.size():
+			if arena.lower_template.landing_slots[i].distance_to(local) < 0.3:
+				slot_index = i
+		_check(drift < 0.3 and slot_index >= 0 and arena.lower_floor.is_safe_point(local, 1.1),
+				"Kantensturz bei %s: Drift %.2f m, Slot %d" % [exit_point, drift, slot_index])
+		used[slot_index] = true
+	_check(used.size() >= 2, "Nur ein Landing-Slot genutzt (%s)" % [used.keys()])
+
+
+func test_v6_hidden_floor_and_transition() -> void:
+	await _start_floors([&"cross_forge", &"twin_plates"])
+	_calm_mixed()
+	var glow := arena.lower_floor.get_node("UnderGlow") as OmniLight3D
+	_check(not arena.lower_floor.visible and not glow.is_visible_in_tree(), "Ebene 2 oder ihr Licht vor dem Abstieg sichtbar")
+	for c in arena.lower_combatants():
+		_check(not c.visible and c.get("target") == null, "%s vor dem Abstieg sichtbar/aktiv" % c.name)
+	_check(arena.run_floors.get_child_count() == 2 and not arena.fixed_floor.visible and arena.fixed_floor.collision_layer == 0,
+			"Nicht genau zwei Run-Ebenen / feste Arena aktiv")
+	var t1 := arena.upper_template
+	var exit_point := Vector2(t1.bounds().end.x + 0.7, 0.0)
+	player.global_position = arena.upper_floor.to_global(Vector3(exit_point.x, 0.05, exit_point.y))
+	player.velocity = Vector3.ZERO
+	var transition := _new_transition_record()
+	for i in 240:
+		await _ticks(1)
+		_record_transition(transition, i)
+		if arena.descent == TrainingArena.Descent.FLOOR_2:
+			break
+	_check_transition(transition, "Vorlage")
+	_check(glow.is_visible_in_tree() and arena.lower_floor.visible, "Ebene 2 nach der Landung nicht sichtbar")
+
+
+## Gegner läuft vom entferntesten Slot zum Spieler; nie freiwillig in ein Loch.
+func _enemy_reaches_player(label: String, e: Node3D, start: Vector3, reach: Callable, max_ticks: int = 900) -> void:
+	e.global_position = start
+	e.set("velocity", Vector3.ZERO)
+	e.set("target", player)
+	var ok := false
+	for i in max_ticks:
+		await _ticks(1)
+		player.velocity = Vector3.ZERO
+		if bool(e.get("is_defeated")) or e.global_position.y < (arena.lower_floor_height() if arena.floor_index() == 2 else 0.0) - 0.5:
+			break
+		if reach.call():
+			ok = true
+			break
+	_check(not bool(e.get("is_defeated")), "%s: %s fällt beim Laufen in ein Loch" % [label, e.name])
+	_check(ok, "%s: %s erreicht den Spieler nicht (bei %s)" % [label, e.name, e.global_position])
+
+
+func test_v7_enemy_navigation_and_knockback_on_all_templates() -> void:
+	for t in FloorTemplates.all():
+		var on_floor_2 := not t.allowed_on_floor(1)
+		if on_floor_2:
+			await _start_floors([&"open_forge", t.id])
+			_calm_mixed()
+			player.global_position = arena.upper_floor.to_global(Vector3(arena.upper_template.bounds().end.x + 0.7, 0.05, 0.0))
+			await _await_descent(TrainingArena.Descent.FLOOR_2)
+			await _ticks(10)
+		else:
+			await _start_floors([t.id, &"shattered_ring" if t.id != &"shattered_ring" else &"central_pit"])
+			await _ticks(2)
+		player.protect_from_combat(1000.0)
+		var floor_node: FloorGeometry = arena.lower_floor if on_floor_2 else arena.upper_floor
+		for c in arena.combatants():
+			c.call("stop_combat")
+		var scrapling: Scrapling = arena.active_enemies[0]
+		var shooter: Sparker = arena.active_shooters[0]
+		arena.active_enemies[1].set_active(false)
+		shooter.set_active(false)
+		var me := _local_xz(floor_node, player.global_position)
+		var far := t.melee_slots[0]
+		for s in t.melee_slots + t.ranged_slots:
+			if s.distance_to(me) > far.distance_to(me):
+				far = s
+		await _enemy_reaches_player(t.id + " Scrapling", scrapling, floor_node.to_global(Vector3(far.x, 0.02, far.y)),
+				func() -> bool: return scrapling.state == Scrapling.State.ATTACK)
+		scrapling.stop_combat()
+		scrapling.set_active(false)
+		shooter.set_active(true)
+		await _enemy_reaches_player(t.id + " Funkenwerfer", shooter, floor_node.to_global(Vector3(far.x, 0.02, far.y)),
+				func() -> bool: return shooter.state == Sparker.State.CHARGE)
+		shooter.stop_combat()
+		# Knockback darf trotzdem in Loch/über Kante führen; Orbs landen erreichbar auf der Ebene.
+		scrapling.set_active(true)
+		scrapling.stop_combat()
+		# Punkt 0.45 m neben dem ersten Loch (bzw. der rechten Außenkante) mit Stoß hinein.
+		var edge_target := Vector2.ZERO
+		var push := Vector2.ZERO
+		var options: Array = []
+		if not t.holes.is_empty():
+			var hole := t.holes[0]
+			var c := hole.get_center()
+			options = [[Vector2(c.x, hole.position.y - 0.45), Vector2(0, 1)], [Vector2(c.x, hole.end.y + 0.45), Vector2(0, -1)],
+					[Vector2(hole.position.x - 0.45, c.y), Vector2(1, 0)], [Vector2(hole.end.x + 0.45, c.y), Vector2(-1, 0)]]
+		var b := t.bounds()
+		for x_step in 40:
+			options.append([Vector2(b.end.x - 0.45 - x_step * 0.25, b.get_center().y), Vector2(1, 0)])
+		for option in options:
+			if t.contains(option[0]):
+				edge_target = option[0]
+				push = option[1]
+				break
+		var before := _orb_total(0)
+		scrapling.global_position = floor_node.to_global(Vector3(edge_target.x, 0.02, edge_target.y))
+		scrapling.velocity = Vector3.ZERO
+		await _ticks(2)
+		var hit := HitInfo.new()
+		hit.damage = 1.0
+		hit.knockback_velocity = Vector3(push.x, 0, push.y) * 9.0
+		hit.knockback_duration = 0.3
+		scrapling.receive_hit(hit)
+		for i in 150:
+			await _ticks(1)
+			if scrapling.is_defeated:
+				break
+		await _ticks(30)
+		_check(scrapling.is_defeated and scrapling.last_defeat_reason == Scrapling.DefeatReason.FALL, "%s: Knockback führt nicht über Kante/in Loch" % t.id)
+		_check(_orb_total(0) - before == arena.scrapling_xp, "%s: Orbs nach Lochsturz fehlen" % t.id)
+		for orb in arena.orbs():
+			_check(floor_node.is_safe_point(_local_xz(floor_node, orb.global_position), 0.2), "%s: Orb unerreichbar bei %s" % [t.id, orb.global_position])
+
+
+func test_v8_run_progression_across_templates() -> void:
+	await _start_floors([&"central_pit", &"cross_forge"])
+	var run := arena.run
+	var connections := arena.enemies[0].defeated.get_connections().size()
+	var old_upper := arena.upper_floor
+	# XP auf Vorlage 1, Stats, Pflicht-Upgrade, Lukenabstieg.
+	for c in arena.combatants():
+		c.call("receive_hit", _lethal(200.0))
+	await _ticks(2)
+	await _choose_reward(0)
+	await _ticks(40)
+	_check(run.total_xp == 100 and run.upgrades.size() == 1 and arena.hatch.is_open, "Run-Progression auf Central Pit falsch")
+	run.invest(RunState.POWER)
+	player.global_position = arena.hatch.global_position + Vector3.UP * 0.05
+	player.velocity = Vector3.ZERO
+	await _await_descent(TrainingArena.Descent.FLOOR_2)
+	await _ticks(5)
+	_check(run == arena.run and run.rank(RunState.POWER) == 1 and run.upgrades.size() == 1 and is_equal_approx(player.max_hp(), 100.0)
+			and is_equal_approx(player.weapon.effective_damage(), 21.0 * (1.15 if run.has_upgrade(RunState.DENSE_HEAD) else 1.0)),
+			"Run nach Floorwechsel verändert")
+	_check(arena.stats != null and arena.stats.floor_template.begins_with("Cross Forge"), "Auswertung ohne Vorlage: %s" % (arena.stats.floor_template if arena.stats else ""))
+	# Neuer Run: neue Instanzen, alte freigegeben, keine doppelten Verbindungen.
+	await _start_floors([&"twin_plates", &"shattered_ring"])
+	await _ticks(2)
+	_check(not is_instance_valid(old_upper) and arena.run_floors.get_child_count() == 2 and arena.run != run and arena.run.total_xp == 0,
+			"Alte Ebenen/Run bleiben bestehen")
+	_check(arena.enemies[0].defeated.get_connections().size() == connections, "Gegnerverbindungen verdoppelt")
+	# Früher Sturz auf anderer Vorlage: kein Upgrade, 12 Schaden, XP bleiben.
+	arena.active_enemies[0].receive_hit(_lethal(200.0))
+	await _ticks(3)
+	await _collect_all_orbs()
+	var offered := [0]
+	arena.floor_reward_offered.connect(func(_c: Array[StringName]) -> void: offered[0] += 1)
+	player.global_position = arena.upper_floor.to_global(Vector3(arena.upper_template.bounds().position.x - 0.7, 0.05, 0.0))
+	player.velocity = Vector3.ZERO
+	await _await_descent(TrainingArena.Descent.FLOOR_2)
+	await _ticks(60)
+	_check(arena.run.total_xp == 30 and offered[0] == 0 and is_equal_approx(player.hp, 88.0), "Früher Sturz auf Twin Plates falsch (XP %d, HP %.0f)" % [arena.run.total_xp, player.hp])

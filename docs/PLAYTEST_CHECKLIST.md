@@ -72,6 +72,14 @@ Kernfragen: Lohnt sich das Räumen gegenüber dem Sprung (12 HP)? Ist die Luke k
 
 Kernfragen: Lohnt sich das Räumen gegenüber dem Sprung? Stören die Orbs im Kampf, oder lohnt sich der Umweg dafür? Sind Level-Ups spürbar, ohne den Kampf zu unterbrechen?
 
+## M3B-Floor-Variety (Spieltest, Standardstart)
+
+1. Run 1: beide Floors normal räumen, auf Unterschiede durch die Geometrie achten (F3 zeigt Vorlage und Kantenrisiko).
+2. Run 2: neuen Run starten – erscheinen andere Vorlagen? Floor 1 absichtlich früh verlassen (senkrechte Landung, kein Upgrade).
+3. Run 3: gezielt einen HIGH-Risk-Floor (Shattered Ring, Ebene 2) spielen, Knockback in den Schacht nutzen.
+
+Kernfragen: Fühlen sich Open Forge und Shattered Ring unterschiedlich an? Bleibt der Kampf auf allen Floors lesbar? Wird der Hammer auf einem Template durch Kantensiege zu dominant? Wirkt die Gegnernavigation irgendwo unnatürlich? Ist die Arena mit Controller groß genug, aber nicht zu groß?
+
 ## Automatisierbare M1-Regeln
 
 | ID | Verhalten |

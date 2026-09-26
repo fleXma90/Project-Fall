@@ -52,17 +52,28 @@ var total_xp: int = 0
 var unspent_attribute_points: int = 0
 var ranks: Dictionary = {}
 var upgrades: Array[StringName] = []
+## Zufall der Floor-Clear-Upgrades (Reihenfolge seit M3A unverändert).
 var rng := RandomNumberGenerator.new()
+## M3B: getrennter Zufall für Floor-Vorlagen und Slot-Wahl; beeinflusst `rng` nie.
+var floor_rng := RandomNumberGenerator.new()
+## M3B: für diesen Run gewählte Floor-Vorlagen (Ebene 1, Ebene 2), fix bis zum nächsten Run.
+var floor_template_ids: Array[StringName] = []
 
 
-## seed_value 0 = zufällig; Tests setzen einen festen Seed.
-func _init(seed_value: int = 0) -> void:
+## seed_value 0 = zufällig; Tests setzen einen festen Seed. floor_seed 0 = aus seed_value abgeleitet.
+func _init(seed_value: int = 0, floor_seed: int = 0) -> void:
 	for attribute in ATTRIBUTES:
 		ranks[attribute] = 0
 	if seed_value != 0:
 		rng.seed = seed_value
 	else:
 		rng.randomize()
+	if floor_seed != 0:
+		floor_rng.seed = floor_seed
+	elif seed_value != 0:
+		floor_rng.seed = hash([seed_value, "floors"])
+	else:
+		floor_rng.randomize()
 
 
 static func xp_to_next(level: int) -> int:

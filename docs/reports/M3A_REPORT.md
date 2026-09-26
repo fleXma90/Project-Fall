@@ -3,7 +3,7 @@
 Datum: 26.09.2026  
 Umfang: Auftrag „M3A — Run Progression V1“ plus Nutzerergänzung: Gegner lassen sichtbare XP fallen, die man in der Nähe (leicht magnetisch) einsammelt, auch nach einem Sturz über die Kante; keine automatische Gutschrift beim Kill.  
 Ausgangsstand: `13981ee` (M2D–M2D.2, GitHub `main`)  
-Status: implementiert (Prototyp mit Dummy-Assets), nicht committet  
+Status: implementiert (Prototyp mit Dummy-Assets); committet und gepusht als `7550fea` (GitHub `main`, 26.09.2026)  
 Nutzerabnahme: offen
 
 ## Spielbares Ergebnis
@@ -129,4 +129,4 @@ Basiswert (unveränderte Ressource) × Attributfaktor × Upgradefaktor, Bogen un
 
 ## Stopp
 
-Kein M3B, keine Floor-Variety, keine Relikte, keine Assets. Kein Commit/Push ohne ausdrückliche Anweisung.
+Kein M3B, keine Floor-Variety, keine Relikte, keine Assets. Commit/Push erfolgten auf ausdrückliche Anweisung (`7550fea`).

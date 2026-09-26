@@ -33,6 +33,9 @@ var defeat_count: int = 0
 var gap_detour: bool = false
 ## Letzte Position mit Bodenkontakt (Abwurfort der XP-Orbs nach einem Kantensturz).
 var last_ground_position: Vector3 = Vector3.ZERO
+## Nach einem Teleport (reset_to) einen Physiktick ohne Bewegung: Andere, im selben Frame versetzte Körper
+## stehen in der Kollisionsabfrage erst danach an ihrer neuen Stelle (sonst Herausschieben aus alten Positionen).
+var _settle_ticks: int = 0
 var _detour_side: Array[float] = [1.0]
 var last_defeat_reason: DefeatReason = DefeatReason.HP
 var spawn_transform: Transform3D
@@ -69,6 +72,9 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	if state == State.INACTIVE or _frozen:
+		return
+	if _settle_ticks > 0:
+		_settle_ticks -= 1
 		return
 	var desired := Vector3.ZERO
 	match state:
@@ -271,6 +277,7 @@ func reset_to(spawn: Transform3D) -> void:
 	spawn_transform = spawn.orthonormalized()
 	global_transform = spawn_transform
 	last_ground_position = spawn_transform.origin
+	_settle_ticks = 1
 	velocity = Vector3.ZERO
 	_knockback_left = 0.0
 	_hit_left = 0.0

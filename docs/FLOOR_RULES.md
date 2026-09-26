@@ -36,6 +36,10 @@ Nach Clear wird ein markierter sicherer Abstieg aktiv. Kein Interact-Button nöt
 
 Szenario „Abstieg“: Ebene 2 liegt 10 m tiefer (Ring um einen Schacht). Sturz über die Kante von Ebene 1 → Landung auf Ebene 2 mit 12 % max HP Sturzschaden; Luke nach dem Räumen → Landung ohne Schaden. Landepunkt: validiert (1.2 m Boden ringsum, 3 m Abstand zu Gegnern). Seit M2D.2 fällt der Spieler senkrecht (kurz abklingender Schwung); die noch verborgene Ebene 2 wird versetzt, nicht der Spieler gelenkt. Landeschutz 0.75 s nur gegen Kampftreffer. Sturz von Ebene 2 = Niederlage. Details: `COMBAT_SPEC.md` (M2D), `reports/M2D_REPORT.md`.
 
+### Umsetzung M3B (Floor-Vorlagen, 26.09.2026)
+
+Im Abstieg kommen beide Ebenen aus sechs handgebauten Vorlagen (`FLOOR_TEMPLATES.md`): echte Löcher und Randkerben ohne Collider, keine Randbarrieren (per Physik-Raster geprüft). Die Luke liegt je Vorlage an einer geprüften Stelle (Boden ringsum ≥ 2 m, nicht in Löchern, nicht an der Außenkante). Landung weiterhin senkrecht; die verborgene nächste Ebene wird so ausgerichtet, dass ein validierter Landing-Slot (≥ 1.2 m Boden ringsum, ≥ 3 m zu Gegnern) unter der Fallbahn liegt. Sturzschaden und Landeschutz unverändert.
+
 ## Dodge / Tunneling
 
 Da echte 3D-Physik verwendet wird, darf ein schneller Dodge keine unrealistische Kantenbrücke erzeugen. Collider, Physiktakt und Bewegung so umsetzen, dass der Player bei fehlendem Boden zuverlässig in Falling übergeht. Kein künstlicher „Support-Sweep“, der einen großen Luftspalt als Boden behandelt.

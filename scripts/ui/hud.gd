@@ -177,6 +177,10 @@ func _process(delta: float) -> void:
 	elif _arena != null:
 		lines.append("Dummies besiegt: HP %d · Kante %d  ·  Stürze: %d" % [
 				_arena.dummy_hp_defeats, _arena.dummy_fall_defeats, _arena.player_fall_count])
+	if _arena != null and _arena.upper_template != null:
+		var template := _arena.lower_template if _arena.floor_index() == 2 else _arena.upper_template
+		lines.append("FLOOR TEMPLATE: %s · EDGE RISK: %s · RUN FLOOR: %d / 2 · Seeds Run %d / Floor %d" % [template.display_name,
+				template.risk_name(), _arena.floor_index(), _arena.run_seed, _arena.floor_seed])
 	lines.append("F2 Touch-Test · F3 Debug · R Reset")
 	_debug_label.text = "\n".join(lines)
 

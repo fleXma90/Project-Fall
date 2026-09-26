@@ -168,6 +168,14 @@ Treffer laufen über `receive_hit(hit: HitInfo) -> bool` (Player, Dummy, Scrapli
 - Floor-Clear-Belohnung: Arena-Zustand `reward_pending`/`reward_offered`/`reward_choices`, Signal `floor_reward_offered`; `Main` zeigt `FloorRewardScreen` und ruft `choose_floor_reward()`. Die Luke öffnet erst danach; nach einer Landung mit offener Belohnung werden Ebene-2-Gegner erst nach der Auswahl aktiv.
 - UI: `Hud.bind_run()` (Level, XP-Leiste, STATS-Button mit Badge, Level-Up-Einblendung), `StatsScreen` und `FloorRewardScreen` (CanvasLayer, im Code aufgebaut, pausieren und lösen Eingaben), `LevelUpBurst` (VFX). Neue Eingabeaktion `stats` (C, Controller Back).
 
+## Floor-Vorlagen M3B
+
+- `FloorTemplate` (Daten + Geometrie + `validate()`), `FloorTemplates` (Katalog, Kandidaten, `select_pair`), beides in `scripts/levels/`. Details: `FLOOR_TEMPLATES.md`.
+- `FloorGeometry` unterstützt `holes` (echter fehlender Boden) und `cutouts` (Luken-Aussparung, zählt für `contains()` als Boden), baut überlappungsfreie Teilrechtecke und optional ein Licht darunter; `set_enabled()` schaltet auch Kindkörper (Lukendeckel).
+- Die Arena hält `fixed_floor`/`fixed_hatch` (Szene `Platform`) für die festen Szenarien und baut im Abstieg pro Run zwei Instanzen unter `RunFloors` (`upper_floor` mit `DescentHatch`, `lower_floor` 10 m tiefer). `upper_template`/`lower_template` liefern Spielerstart, Spawn-Slots (`_pick_slots` mit `RunState.floor_rng`) und Landing-Slots (`choose_landing_slot`). Die feste Ebene 2 und ihre Marker entfallen in der Szene.
+- `RunState.floor_rng` ist vom Upgrade-Zufall getrennt; `TrainingArena.floor_seed` und `forced_floor_ids` dienen Tests/Debug.
+- Gegner: `gap_detour` im Abstieg für alle; nach `reset_to` ein Physiktick ohne Bewegung (`_settle_ticks`).
+
 ## Produktionsasset-Integration später
 
 Siehe `ASSET_PIPELINE.md`. Grundvertrag:

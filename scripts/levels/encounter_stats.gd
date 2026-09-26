@@ -26,6 +26,8 @@ var projectile_hits: int = 0
 var has_shooter: bool = false
 ## Abstieg: Sturzschaden bei der Landung auf dieser Ebene (in damage_taken enthalten).
 var fall_damage: float = 0.0
+## M3B: Floor-Vorlage dieser Ebene im Abstieg (Name und Kantenrisiko).
+var floor_template: String = ""
 
 
 func outcome_name() -> String:
@@ -49,7 +51,7 @@ func to_line() -> String:
 	return "%s · Profil %s · %s · %.1f s · Schaden %d (%d Treffer) · besiegt HP %d / Kante %d von %d · Gegnerangriffe %d, ACTIVE %d, vor ACTIVE abgebrochen %d" % [
 			scenario, profile, outcome_name(), duration, int(damage_taken), hits_taken,
 			enemies_hp_defeated, enemies_fall_defeated, enemies_total,
-			enemy_attacks_started, enemy_attacks_active, enemy_attacks_interrupted] + _shooter_part() + _fall_part()
+			enemy_attacks_started, enemy_attacks_active, enemy_attacks_interrupted] + _shooter_part() + _fall_part() + (" · Floor %s" % floor_template if not floor_template.is_empty() else "")
 
 
 func _shooter_part() -> String:

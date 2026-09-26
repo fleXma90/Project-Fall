@@ -113,6 +113,17 @@ Keine Generatoren/XP/Upgrades.
 
 **Nicht enthalten (gesperrt):** M3B, Floor-Variety/Generatoren, dritte Ebene, Relikte, Boss-Belohnungen, Meta-Währung, Save/Load, Shops, Inventar, mehrere Waffen, neue Gegner/Hazards, Produktionsassets, Kameraumbau.
 
+## M3B — Floor Variety V1 (begrenzter Teilmeilenstein)
+
+**Ausdrücklich freigegeben am 26.09.2026, nur dieser Teil.** Umsetzung: `docs/reports/M3B_REPORT.md`, Vorlagen: `docs/FLOOR_TEMPLATES.md`.
+
+- sechs handgebaute Floor-Vorlagen (Open Forge, Broken Corner, Central Pit, Twin Plates, Cross Forge, Shattered Ring) mit kuratiertem Kantenrisiko LOW/MEDIUM/HIGH,
+- Auswahl pro Abstiegs-Run: Ebene 1 LOW/MEDIUM, Ebene 2 MEDIUM/HIGH, nie doppelt; getrennter, deterministischer Floor-Zufall,
+- Spawn-, Landing- und Luken-Slots je Vorlage, Validator, senkrechte Landung über Slot-Ausrichtung der verborgenen Ebene,
+- feste Testarena für Training/Duell/Gruppe/Mischkampf unverändert.
+
+**Nicht enthalten (gesperrt):** prozeduraler Generator, zufällige Gegnerzusammensetzung, neue Gegner/mehr Gegner, Boss, Relikte, dritte Ebene, Shops, Meta-Progression, neue Attribute/Upgrades/Waffen, Bodenfallen, zerstörbare Floors, Produktionsassets, dynamische Kamera.
+
 ## M3 — erster Run-Build
 
 RunState, überschaubares XP-Grundwachstum und wenige mechanische Hammer-Upgrades. Tod setzt Run-Macht zurück. Floorwechsel behält sie. Keine permanente Statprogression. (Mit M3A als erster Teil umgesetzt; Rest nicht freigegeben.)

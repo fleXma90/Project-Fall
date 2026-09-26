@@ -56,30 +56,6 @@ rects = Array[Rect2]([Rect2(-6.5, -5, 13, 7), Rect2(-6.5, 4, 13, 1), Rect2(-6.5,
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 3)
 script = ExtResource("6_hatch")
 
-[node name="LowerFloor" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -10, 0)
-collision_mask = 0
-script = ExtResource("3_floor")
-rects = Array[Rect2]([Rect2(-8.5, -7, 17, 4), Rect2(-8.5, 1, 17, 6), Rect2(-8.5, -3, 6, 4), Rect2(2.5, -3, 6, 4)])
-
-[node name="LowerGlow" type="OmniLight3D" parent="LowerFloor"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -4.5, 0)
-light_color = Color(1, 0.45, 0.15, 1)
-light_energy = 3.0
-omni_range = 16.0
-
-[node name="LowerScraplingSpawnA" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.5, -9.98, -1)
-
-[node name="LowerScraplingSpawnB" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.5, -9.98, -1)
-
-[node name="LowerSparkerSpawn" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -9.98, -5.5)
-
-[node name="LowerFallbackLanding" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -10, 4)
-
 [node name="LowerScraplingA" parent="." instance=ExtResource("4_scrapling")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.5, -9.98, -1)
 
@@ -133,6 +109,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.2, 0.02, -2)
 
 [node name="MixedSparkerSpawn" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0.02, 3.6)
+
+[node name="RunFloors" type="Node3D" parent="."]
 
 [node name="Pickups" type="Node3D" parent="."]
 

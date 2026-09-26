@@ -90,6 +90,14 @@ const BOLT_SCENE: PackedScene = preload("res://scenes/combat/spark_bolt.tscn")
 @export var reward_delay: float = 0.8
 @export var reward_max_delay: float = 1.6
 
+@export_group("Floor-Vorlagen")
+## Höhe der Oberkante von Ebene 2 relativ zu Ebene 1.
+@export var lower_floor_offset: float = -10.0
+## 0 = Floor-Seed aus dem Run-Seed abgeleitet (getrennt vom Upgrade-Zufall); Test/Debug: fester Wert.
+@export var floor_seed: int = 0
+## Test-/Debughilfe: feste Vorlagen-IDs [Ebene 1, Ebene 2] statt Zufallswahl.
+@export var forced_floor_ids: Array[StringName] = []
+
 var mode: Mode = Mode.TRAINING
 var stun_profile: StunProfile = StunProfile.BASE
 var shot_profile: ShotProfile = ShotProfile.STANDARD
@@ -134,6 +142,9 @@ var upper_fade: float = 0.0
 var lower_reveal: float = 0.0
 var _upper_base_position: Vector3
 var _lower_base_position: Vector3
+## M3B: Vorlagen des aktuellen Abstiegs (null außerhalb des Abstiegs).
+var upper_template: FloorTemplate = null
+var lower_template: FloorTemplate = null
 ## Ausgangshöhen der zurückgelassenen Gegner der Ebene 1 (sie ziehen mit der Ebene nach oben weg).
 var _upper_combatant_base_y: Dictionary = {}
 ## Ebene, auf der der Kampf läuft (1 bis zur Landung auf Ebene 2).
@@ -155,12 +166,14 @@ var _left_floor_xp: int = 0
 @onready var effects: Node3D = $Effects
 @onready var projectiles: Node3D = $Projectiles
 @onready var pickups: Node3D = $Pickups
+## Feste Testarena (Training/Duell/Gruppe/Mischkampf); im Abstieg deaktiviert.
+@onready var fixed_floor: FloorGeometry = $Platform
+@onready var fixed_hatch: DescentHatch = $Platform/Hatch
+@onready var run_floors: Node3D = $RunFloors
+## Aktive Ebenen: außerhalb des Abstiegs die feste Arena, im Abstieg die Instanzen der gewählten Vorlagen.
 @onready var upper_floor: FloorGeometry = $Platform
 @onready var hatch: DescentHatch = $Platform/Hatch
-@onready var lower_floor: FloorGeometry = $LowerFloor
-@onready var lower_scrapling_spawns: Array[Marker3D] = [$LowerScraplingSpawnA, $LowerScraplingSpawnB]
-@onready var lower_sparker_spawn: Marker3D = $LowerSparkerSpawn
-@onready var lower_fallback_landing: Marker3D = $LowerFallbackLanding
+var lower_floor: FloorGeometry = null
 @onready var environment: Environment = ($WorldEnvironment as WorldEnvironment).environment
 @onready var depth_backdrop: DepthBackdrop = $DepthBackdrop
 
@@ -189,7 +202,7 @@ func _ready() -> void:
 		s.attack_interrupted.connect(_on_sparker_interrupted)
 		s.fired.connect(_on_sparker_fired)
 		s.set_active(false)
-	# Ebene 2 hat einen Schacht in der Mitte: lokaler Umweg statt Stehenbleiben an der Lücke.
+	# Ebenen im Abstieg haben Löcher/Kerben: lokaler Umweg statt Stehenbleiben an der Lücke.
 	for e in lower_enemies:
 		e.gap_detour = true
 	for s in lower_shooters:
@@ -199,7 +212,6 @@ func _ready() -> void:
 	($WorldEnvironment as WorldEnvironment).environment = environment
 	_base_fog_height = environment.fog_height
 	_upper_base_position = upper_floor.position
-	_lower_base_position = lower_floor.global_position
 	_base_sparker_tuning = sparker.tuning
 	_sharp_sparker_tuning = _base_sparker_tuning.duplicate() as SparkerTuning
 	_sharp_sparker_tuning.charge_time = sharp_charge_time
@@ -286,6 +298,14 @@ func enemies_remaining() -> int:
 	return remaining
 
 
+## Spielerstart: im Abstieg aus der Vorlage von Ebene 1, sonst der Marker des Szenarios.
+func player_start_transform() -> Transform3D:
+	if mode == Mode.DESCENT and upper_template != null:
+		var start := upper_template.player_start
+		return Transform3D(Basis.IDENTITY, upper_floor.to_global(Vector3(start.x, 0.05, start.y)))
+	return current_player_spawn().global_transform
+
+
 func current_player_spawn() -> Marker3D:
 	match mode:
 		Mode.COMBAT:
@@ -315,8 +335,10 @@ func _apply_participants() -> void:
 	for e in enemies:
 		e.set_active(active_enemies.has(e))
 		e.neighbors = _others(e, all)
+		e.gap_detour = mode == Mode.DESCENT  # Vorlagen mit Löchern/Kerben; feste Arenen unverändert
 	sparker.set_active(active_shooters.has(sparker))
 	sparker.neighbors = _others(sparker, all)
+	sparker.gap_detour = mode == Mode.DESCENT
 	var lower := lower_combatants()
 	var no_neighbors: Array[Node3D] = []
 	for c in lower:
@@ -344,7 +366,7 @@ func floor_index() -> int:
 
 
 func lower_floor_height() -> float:
-	return lower_floor.global_position.y
+	return lower_floor.global_position.y if lower_floor != null else lower_floor_offset
 
 
 ## Nachbarn für die Abstandshaltung; leer, wenn self_node nicht an der Runde teilnimmt.
@@ -369,6 +391,10 @@ func restart() -> void:
 	for effect in effects.get_children():
 		effect.queue_free()
 	clear_projectiles()
+	# M3A: Jeder Neustart im Abstieg beginnt einen neuen Run (Basiswerte); andere Szenarien ohne Run.
+	# M3B: Der Run wählt zuerst seine Floor-Vorlagen; Spawns und Start kommen aus ihnen.
+	run = RunState.new(run_seed, floor_seed) if mode == Mode.DESCENT else null
+	_build_run_floors()
 	_reset_floors()
 	if mode == Mode.TRAINING:
 		encounter = Encounter.NONE
@@ -382,30 +408,38 @@ func restart() -> void:
 				spawns.append(enemy_spawn)
 			Mode.GROUP:
 				spawns.append_array(group_enemy_spawns)
-			Mode.MIXED, Mode.DESCENT:
+			Mode.MIXED:
 				spawns.append_array(mixed_scrapling_spawns)
-		var look_at_point := current_player_spawn().global_position
+		var look_at_point := player_start_transform().origin
+		var enemy_spawns: Array[Transform3D] = []
+		var shooter_spawns: Array[Transform3D] = []
+		if mode == Mode.DESCENT:
+			enemy_spawns = _slot_transforms(upper_floor, _pick_slots(upper_template.melee_slots, active_enemies.size()))
+			shooter_spawns = _slot_transforms(upper_floor, _pick_slots(upper_template.ranged_slots, active_shooters.size()))
+		else:
+			for marker in spawns:
+				enemy_spawns.append(marker.global_transform)
+			shooter_spawns.append(mixed_sparker_spawn.global_transform)
 		for i in active_enemies.size():
 			var e := active_enemies[i]
-			e.reset_to(spawns[i].global_transform)
+			e.reset_to(enemy_spawns[i])
 			if mode != Mode.COMBAT:
 				_face(e, look_at_point)
 			e.hit_stun = current_hit_stun()
 			e.target = player
-		for s in active_shooters:
+		for i in active_shooters.size():
+			var s := active_shooters[i]
 			s.tuning = current_sparker_tuning()  # vor reset_to: Werte gelten ab der neuen Runde
-			s.reset_to(mixed_sparker_spawn.global_transform)
+			s.reset_to(shooter_spawns[i])
 			_face(s, look_at_point)
 			s.target = player
 		if mode == Mode.DESCENT:
 			_reset_lower_combatants()
 		encounter = Encounter.RUNNING
-	# M3A: Jeder Neustart im Abstieg beginnt einen neuen Run (Basiswerte); andere Szenarien ohne Run.
-	run = RunState.new(run_seed) if mode == Mode.DESCENT else null
 	if player != null:
 		player.set_run(run)  # vor reset_full: volle Basis-HP
 		player.fall_count = 0
-		player.reset_full(current_player_spawn().global_transform)
+		player.reset_full(player_start_transform())
 		_tracked_player_hp = player.hp
 	if is_combat_mode():
 		# Erst nach dem Spieler-Reset anlegen: die Rücksetzung der HP ist kein Schaden.
@@ -420,6 +454,9 @@ func _begin_stats() -> void:
 	stats.scenario = scenario_name(mode)
 	if mode == Mode.DESCENT:
 		stats.scenario += " · Ebene %d" % floor_index()
+		var template := lower_template if floor_index() == 2 else upper_template
+		if template != null:
+			stats.floor_template = "%s (%s)" % [template.display_name, template.risk_name()]
 	stats.profile = profile_name()
 	stats.has_shooter = not active_shooters.is_empty()
 	if stats.has_shooter:
@@ -441,8 +478,9 @@ func _reset_floors() -> void:
 	hatch.close()
 	upper_floor.set_enabled(true)
 	# Ebene 2 existiert im Abstieg physisch an ihrer Grundposition, bleibt aber bis zum Übergang verborgen.
-	lower_floor.global_position = _lower_base_position
-	lower_floor.set_enabled(mode == Mode.DESCENT)
+	if lower_floor != null:
+		lower_floor.global_position = _lower_base_position
+		lower_floor.set_enabled(true)
 	for c in upper_combatants():
 		c.set_physics_process(true)
 	_upper_combatant_base_y.clear()
@@ -453,19 +491,93 @@ func _reset_floors() -> void:
 		active_shooters.assign([sparker])
 
 
+## M3B: Ebenen des Runs aus den gewählten Vorlagen instanziieren (nur diese zwei existieren). Alte Instanzen
+## werden sofort deaktiviert und freigegeben; außerhalb des Abstiegs gilt die feste Arena.
+func _build_run_floors() -> void:
+	for child in run_floors.get_children():
+		if child is FloorGeometry:
+			(child as FloorGeometry).set_enabled(false)
+		run_floors.remove_child(child)
+		child.queue_free()
+	upper_template = null
+	lower_template = null
+	lower_floor = null
+	if mode != Mode.DESCENT:
+		fixed_floor.set_enabled(true)
+		upper_floor = fixed_floor
+		hatch = fixed_hatch
+		_upper_base_position = upper_floor.position
+		return
+	fixed_floor.set_enabled(false)
+	var pair := FloorTemplates.select_pair(run.floor_rng, forced_floor_ids)
+	upper_template = pair[0]
+	lower_template = pair[1]
+	run.floor_template_ids.assign([upper_template.id, lower_template.id])
+	upper_floor = _instantiate_floor(upper_template, 0.0, true)
+	upper_floor.name = "Floor1_%s" % upper_template.id
+	hatch = upper_floor.get_node("Hatch") as DescentHatch
+	lower_floor = _instantiate_floor(lower_template, lower_floor_offset, false)
+	lower_floor.name = "Floor2_%s" % lower_template.id
+	_upper_base_position = upper_floor.position
+	_lower_base_position = lower_floor.global_position
+
+
+func _instantiate_floor(template: FloorTemplate, height: float, with_hatch: bool) -> FloorGeometry:
+	var floor_node := FloorGeometry.new()
+	floor_node.collision_mask = 0
+	floor_node.rects = template.rects.duplicate()
+	floor_node.holes = template.holes.duplicate()
+	floor_node.under_glow = height < 0.0
+	floor_node.position = Vector3(0.0, height, 0.0)
+	var new_hatch: DescentHatch = null
+	if with_hatch and template.has_hatch:
+		floor_node.cutouts = [template.hatch_rect()]
+		new_hatch = DescentHatch.new()
+		new_hatch.name = "Hatch"
+		new_hatch.size = FloorTemplate.HATCH_SIZE
+		new_hatch.position = Vector3(template.hatch_slot.x, 0.0, template.hatch_slot.y)
+	run_floors.add_child(floor_node)
+	if new_hatch != null:
+		floor_node.add_child(new_hatch)
+	return floor_node
+
+
+## n Slots aus der Liste: bei genau n in Reihenfolge, sonst per Floor-Zufall (nie der Upgrade-Zufall).
+func _pick_slots(slots: Array[Vector2], n: int) -> Array[Vector2]:
+	var pool: Array[Vector2] = slots.duplicate()
+	if pool.size() > n and run != null:
+		for i in range(pool.size() - 1, 0, -1):
+			var j := run.floor_rng.randi_range(0, i)
+			var tmp := pool[i]
+			pool[i] = pool[j]
+			pool[j] = tmp
+	return pool.slice(0, mini(n, pool.size()))
+
+
+static func _slot_transforms(floor_node: FloorGeometry, slots: Array[Vector2]) -> Array[Transform3D]:
+	var result: Array[Transform3D] = []
+	for slot in slots:
+		result.append(Transform3D(Basis.IDENTITY, floor_node.to_global(Vector3(slot.x, 0.02, slot.y))))
+	return result
+
+
 func _reset_lower_combatants() -> void:
-	var center := lower_floor.global_position
+	var bounds := lower_template.bounds()
+	var center := lower_floor.to_global(Vector3(bounds.get_center().x, 0.0, bounds.get_center().y))
+	var enemy_spawns := _slot_transforms(lower_floor, _pick_slots(lower_template.melee_slots, lower_enemies.size()))
+	var shooter_spawns := _slot_transforms(lower_floor, _pick_slots(lower_template.ranged_slots, lower_shooters.size()))
 	for i in lower_enemies.size():
 		var e := lower_enemies[i]
-		e.reset_to(lower_scrapling_spawns[i].global_transform)
+		e.reset_to(enemy_spawns[i])
 		_face(e, center)
 		e.hit_stun = current_hit_stun()
 		e.target = null  # warten, bis der Spieler landet
 		e.visible = false  # erst im Übergang zeigen (zusammen mit Ebene 2)
 		_set_floor_transparency(e, 0.0)
-	for s in lower_shooters:
+	for i in lower_shooters.size():
+		var s := lower_shooters[i]
 		s.tuning = current_sparker_tuning()
-		s.reset_to(lower_sparker_spawn.global_transform)
+		s.reset_to(shooter_spawns[i])
 		_face(s, center)
 		s.target = null
 		s.visible = false
@@ -583,9 +695,9 @@ func _begin_drop() -> void:
 	player.settle_fall(fall_settle_time)
 	var drop_point := player.global_position + player.settle_drift()
 	drop_point.y = lower_floor_height()
-	# Ebene 2 ist noch verborgen: Sie wird samt wartenden Gegnern so versetzt, dass ein geprüfter sicherer
-	# Punkt (Boden ringsum, Abstand zu Gegnern) genau unter dem Spieler liegt. Luke: in der Regel kein Versatz.
-	var safe := find_landing_point(drop_point)
+	# Ebene 2 ist noch verborgen: Sie wird samt wartenden Gegnern so versetzt, dass ein validierter Landing-Slot
+	# der Vorlage (Boden ringsum, Abstand zu Gegnern) genau unter dem Spieler liegt – bei Kante und Luke gleich.
+	var safe := choose_landing_slot(drop_point)
 	var shift := Vector3(drop_point.x - safe.x, 0.0, drop_point.z - safe.z)
 	if shift.length_squared() > 0.0001:
 		lower_floor.global_position += shift
@@ -623,14 +735,48 @@ func _apply_transition(progress: float) -> void:
 			c.global_position.y = float(_upper_combatant_base_y[c]) + rise
 		_set_floor_transparency(c, upper_fade)
 	var lower_visible := mode == Mode.DESCENT and lower_reveal > 0.0
-	lower_floor.visible = lower_visible
-	_set_floor_transparency(lower_floor, 1.0 - lower_reveal)
+	if lower_floor != null:
+		lower_floor.visible = lower_visible
+		_set_floor_transparency(lower_floor, 1.0 - lower_reveal)
 	for c in lower_combatants():
 		c.visible = lower_visible
 		_set_floor_transparency(c, 1.0 - lower_reveal)
 	var depth := smoothstep(0.15, 0.9, progress) * (lower_floor_height() if mode == Mode.DESCENT else 0.0)
 	environment.fog_height = _base_fog_height + depth
 	depth_backdrop.follow_floor(depth)
+
+
+## Landing-Slot der Vorlage von Ebene 2 (Weltposition bei aktueller Lage): sicher, mit Abstand zu den wartenden
+## Gegnern und in der Lage, die der Absprungstelle auf Ebene 1 am besten entspricht (Sturz im Osten → Landung
+## im Osten der neuen Ebene). Ohne gültigen Slot: Suche um near (Rückfall, bei validen Vorlagen nie nötig).
+func choose_landing_slot(near: Vector3) -> Vector3:
+	var upper_center := upper_template.bounds().get_center()
+	var drop_local := upper_floor.to_local(near)
+	var drop_offset := Vector2(drop_local.x, drop_local.z) - upper_center
+	var lower_center := lower_template.bounds().get_center()
+	var best := Vector3.ZERO
+	var best_score := INF
+	for slot in lower_template.landing_slots:
+		if not lower_floor.is_safe_point(slot, landing_edge_margin):
+			continue
+		var world := lower_floor.to_global(Vector3(slot.x, 0.0, slot.y))
+		if _lower_enemy_clearance(world) < landing_enemy_clearance:
+			continue
+		var score := (slot - lower_center).distance_to(drop_offset)
+		if score < best_score:
+			best = world
+			best_score = score
+	return best if best_score < INF else find_landing_point(near)
+
+
+func _lower_enemy_clearance(point: Vector3) -> float:
+	var nearest := INF
+	for c in lower_combatants():
+		if bool(c.get("is_defeated")):
+			continue
+		var offset := c.global_position - point
+		nearest = minf(nearest, Vector2(offset.x, offset.z).length())
+	return nearest
 
 
 ## Validierter sicherer Landepunkt nahe near: Boden ringsum (Abstand zu Kanten und Schacht) und
@@ -649,7 +795,8 @@ func find_landing_point(near: Vector3) -> Vector3:
 			var world := lower_floor.to_global(Vector3(candidate.x, 0.0, candidate.y))
 			if _clear_of_lower_enemies(world):
 				return world
-	return lower_fallback_landing.global_position
+	var fallback := lower_template.landing_slots[0]
+	return lower_floor.to_global(Vector3(fallback.x, 0.0, fallback.y))
 
 
 func _clear_of_lower_enemies(point: Vector3) -> bool:
